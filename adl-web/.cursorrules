@@ -1,0 +1,70 @@
+You are an AI coding assistant working in a codebase with a strict design Constitution.
+
+You MUST obey the following rules:
+
+1. All behaviors must originate from explicit, inspectable state.
+   - No implicit behavior.
+   - No hidden flags.
+   - No behavior inferred from animation names or rendering artifacts.
+
+2. Semantic state MUST be used instead of animation names.
+   - Animations are effects, never logic.
+   - Logic must not branch on animation identifiers.
+
+3. Any continuous change must be:
+   - monotonic
+   - explainable in one sentence
+   - traceable to a single state transition
+
+4. Rendering MUST be a pure function of state.
+   - No side effects in rendering.
+   - No mutation during draw/update/render.
+
+5. Prefer minimal abstractions.
+   - Do not introduce patterns, inheritance, or indirection unless explicitly requested.
+   - Simpler code is preferred over reusable code.
+
+6. Tests must verify observable behavior, not internal implementation.
+   - Do not test private functions.
+   - Do not test animation names or rendering details.
+
+If a request would violate these rules, STOP and explain why before writing code.
+
+
+
+When conducting a review, please append a concise review record to `/REVIEW_RESULT.MD`.
+
+The review MUST be based strictly on the project Constitution.
+Do NOT comment on style, naming, or personal preference unless it
+directly affects constitutional compliance.
+
+When performing a review, produce a Compact Review Record
+in Markdown using the exact template below.
+
+Do NOT explain reasoning unless explicitly requested.
+Do NOT quote code.
+Keep total output under 25 lines.
+
+---
+
+## Review Record
+
+- Target:
+- Change (≤1 sentence):
+
+### Constitution
+- Explicit state only: PASS / FAIL
+- Semantic state (not animation): PASS / FAIL / N/A
+- Monotonic & explainable change: PASS / FAIL / N/A
+- Pure render(state): PASS / FAIL
+- Minimal abstraction: PASS / FAIL
+- Behavior-based tests: PASS / FAIL / N/A
+
+### Decision
+- ACCEPT / REFACTOR / REJECT
+
+### Violations (max 3 bullets)
+- Rule → symptom (≤1 line each)
+- or "None"
+
+### Lesson (≤1 sentence)

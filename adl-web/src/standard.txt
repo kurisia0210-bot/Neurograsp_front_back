@@ -1,0 +1,120 @@
+import React, { useState, useRef } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { OrbitControls, Environment, Grid, ContactShadows } from '@react-three/drei'
+import * as THREE from 'three'
+
+// =================================================================
+// 核心抽象类 1: Rotator (定轴旋转器)
+// 职责：物理层的“关节”，负责平滑地改变角度。
+// =================================================================
+function Rotator({ 
+  children,       // 具体的物体（门、盖子）
+  active,         // boolean: 激活状态 (true=开/转, false=关/回)
+  rotationAxis = 'y', // 'x' | 'y' | 'z'
+  angle = 90,     // 旋转幅度 (角度制)
+  speed = 6,      // 旋转速度 (可控性体现：老人可能需要慢速)
+  // 可选：反向旋转 (例如有的门是往里推的)
+  inverse = false 
+}) {
+  const groupRef = useRef()
+  
+  useFrame((state, delta) => {
+    if (!groupRef.current) return
+
+    // 1. 计算目标弧度 (Explainable Logic)
+    const targetDeg = active ? angle : 0
+    const finalRad = THREE.MathUtils.degToRad(inverse ? -targetDeg : targetDeg)
+
+    // 2. 执行插值 (Controllable Physics)
+    // 无论当前在哪，每一帧都向目标靠近一步
+    const currentRot = groupRef.current.rotation[rotationAxis]
+    const nextRot = THREE.MathUtils.lerp(currentRot, finalRad, delta * speed)
+    
+    groupRef.current.rotation[rotationAxis] = nextRot
+  })
+
+  return (
+    <group ref={groupRef}>
+      {children}
+    </group>
+  )
+}
+
+// =================================================================
+// 业务层：具体的 ADL 家具
+// 职责：定义“我是什么”，并把我的身体交给 Rotator 去转动。
+// =================================================================
+
+function Fridge() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <group position={[-1.5, 0, 0]}>
+      {/* 调用抽象类 1：冰箱门绕 Y 轴转 110 度 */}
+      <Rotator active={isOpen} rotationAxis="y" angle={110} speed={4}>
+        
+        {/* 冰箱门实体 */}
+        <mesh 
+          position={[0.6, 1.5, 0]} // 偏移：让左边缘对齐轴心
+          onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen) }}
+        >
+          <boxGeometry args={[1.2, 3, 0.1]} />
+          <meshStandardMaterial color={isOpen ? "#3498db" : "#2c3e50"} />
+        </mesh>
+
+      </Rotator>
+      <div className="text-center text-xs mt-2 text-gray-500">冰箱 (Y轴)</div>
+    </group>
+  )
+}
+
+function ToiletLid() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <group position={[1.5, 0, 0]}>
+      {/* 调用抽象类 1：马桶盖绕 X 轴转 100 度，且是向后翻(inverse) */}
+      <Rotator active={isOpen} rotationAxis="x" angle={100} inverse speed={8}>
+        
+        {/* 马桶盖实体 */}
+        <mesh 
+          position={[0, 0.05, -0.6]} // 偏移：让后边缘对齐轴心
+          onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen) }}
+        >
+          <boxGeometry args={[1.2, 0.1, 1.2]} />
+          <meshStandardMaterial color={isOpen ? "#e74c3c" : "#c0392b"} />
+        </mesh>
+
+      </Rotator>
+      <div className="text-center text-xs mt-2 text-gray-500">翻盖 (X轴)</div>
+    </group>
+  )
+}
+
+// =================================================================
+// 主场景
+// =================================================================
+export default function App() {
+  return (
+    <div className="w-full h-screen bg-[#ecf0f1]">
+      <Canvas camera={{ position: [0, 4, 6], fov: 50 }}>
+        {/* 实验室环境 */}
+        <Environment preset="city" />
+        <ambientLight intensity={0.6} />
+        <ContactShadows opacity={0.4} scale={20} blur={2.5} />
+        <Grid args={[10, 10]} cellColor="#bdc3c7" sectionColor="#95a5a6" />
+
+        {/* 场景中的物体 */}
+        <Fridge />
+        <ToiletLid />
+
+        <OrbitControls makeDefault />
+      </Canvas>
+
+      {/* 调试面板 */}
+      <div className="absolute top-4 left-4 font-mono text-sm text-gray-600">
+        Class 1: Rotator (Active)
+      </div>
+    </div>
+  )
+}
