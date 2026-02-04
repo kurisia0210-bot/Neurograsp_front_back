@@ -99,6 +99,12 @@ def evaluate_reflex(action: ActionPayload, obs: ObservationPayload) -> ReflexRes
             # 前端逻辑通常是 Toggle，但如果是 LLM 显式发指令，我们需要检查状态
             # 这里简化为 ALLOW，交给前端 Toggle
             return ReflexResponse(ReflexVerdict.ALLOW)
+        
+        if target_id == ItemName.TABLE_SURFACE:
+            if agent_holding is None:
+                return ReflexResponse(ReflexVerdict.BLOCK, "Hands empty. Nothing to place.")
+            # 允许放置
+            return ReflexResponse(ReflexVerdict.ALLOW)
 
     # ========================================================
     # 3. 默认安全网

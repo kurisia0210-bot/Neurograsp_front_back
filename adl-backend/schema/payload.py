@@ -24,6 +24,8 @@ class ItemName(str, Enum):
     FRIDGE_MAIN = "fridge_main"
     FRIDGE_DOOR = "fridge_door"
     STOVE = "stove"
+    # ✅ 新增：让桌子成为合法的交互对象
+    TABLE_SURFACE = "table_surface"
 
 class PoiName(str, Enum):
     TABLE_CENTER = "table_center"
@@ -54,6 +56,25 @@ class VisibleObject(BaseModel):
     id: ItemName = Field(..., description="物体的唯一ID")
     state: ObjectState = Field(..., description="物体的物理状态")
     relation: Optional[str] = None
+
+# ✅ [M8] 新增：失败类型分类学
+class FailureType(str, Enum):
+    # 1. 认知层面的失败 (脑子乱了)
+    SCHEMA_ERROR = "SCHEMA_ERROR"       # 输出的 JSON 格式不对，或者字段校验失败 (System Confused)
+    REASONING_ERROR = "REASONING_ERROR" # 输出了合法的 JSON，但逻辑不通 (如 target=null 但 type=INTERACT)
+    
+    # 2. 物理层面的失败 (被物理引擎拒绝)
+    REFLEX_BLOCK = "REFLEX_BLOCK"       # 被 adl_rules 驳回 (门没开，手不够长)
+    
+    # 3. 任务层面的失败
+    GOAL_AMBIGUOUS = "GOAL_AMBIGUOUS"   # 根本不知道要干嘛
+
+# ✅ [M8] 新增：行动结果的元数据
+# 我们需要把它存进记忆里，而不仅仅是 ActionPayload
+class ActionExecutionResult(BaseModel):
+    success: bool
+    failure_type: Optional[FailureType] = None
+    failure_reason: str = "" # 可读的错误信息 (给 LLM 看的)
 
 class ObservationPayload(BaseModel):
     timestamp: float
@@ -92,7 +113,8 @@ SystemResponses.SILENCE = ActionPayload(
 class ReflexVerdict(str, Enum):
     ALLOW = "ALLOW"
     BLOCK = "BLOCK"
-    # 未来可能还有 WARN, MANAL_REVIEW 等
+    IGNORE = "IGNORE"
+    # 未来可能还有 WARN, MANUAL_REVIEW 等
 
 # ... (AgentSelfState 等模型) ...
 

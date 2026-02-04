@@ -1,13 +1,13 @@
 # app.py
 # Milestone 5: Pure I/O Layer
-# 没有任何业务逻辑，只有 HTTP 协议转换
+# 没有任何业务逻辑，只HTTP 协议转换
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from schema.payload import ObservationPayload
-import core.agent as agent  # 👈 唯一依赖
+from core import agent as agent  # 👈 唯一依赖
 
 app = FastAPI()
 
@@ -26,11 +26,11 @@ def read_root():
 
 from schema.payload import ObservationPayload, AgentStepResponse # 导入
 
-@app.post("/api/tick", response_model=AgentStepResponse) # ✅ FastAPI 文档会自动更新
+@app.post("/api/tick", response_model=AgentStepResponse) # �?FastAPI 文档会自动更�?
 async def tick(obs: ObservationPayload):
     return await agent.step(obs)
 
 if __name__ == "__main__":
-    print("⚡ COALA I/O Layer Starting...")
+    print("�?COALA I/O Layer Starting...")
     # 生产环境/CLI 兼容模式
     uvicorn.run(app, host="127.0.0.1", port=8001)
