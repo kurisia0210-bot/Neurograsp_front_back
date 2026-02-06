@@ -8,10 +8,35 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import chromadb
-import uuid
 from typing import List, Dict, Optional
 from schema.payload import ObservationPayload, ActionPayload, ActionExecutionResult
+from schema.db_memory import MemoryRecord, MemorySearchResult
+
+# 尝试导入chromadb，如果失败则使用mock模式
+try:
+    import chromadb
+    import uuid
+    CHROMADB_AVAILABLE = True
+    print("🧠 [VectorDB] ChromaDB可用，使用持久化存储")
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    print("⚠️ [VectorDB] ChromaDB不可用，使用内存mock模式")
+    import uuid  # 在mock模式下也需要uuid
+    
+    # 创建简单的mock类
+    class MockCollection:
+        def __init__(self):
+            self._data = []
+            self._count = 0
+            
+        def count(self):
+            return self._count
+            
+        def add(self, documents=None, metadatas=None, ids=None):
+            self._count += 1
+            
+        def query(self, query_texts=None, n_results=None, where=None):
+            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
 
 class VectorDBService:
     def __init__(self, db_path: str = "./chroma_db"):
@@ -20,6 +45,15 @@ class VectorDBService:
         数据将保存在本地文件夹，无需 Docker，无需显卡。
         """
         print(f"🧠 [VectorDB] Initializing memory at {db_path}...")
+        
+        if not CHROMADB_AVAILABLE:
+            # Mock模式
+            self.client = None
+            self.episodes_collection = MockCollection()
+            self.semantics_collection = MockCollection()
+            print("🧠 [VectorDB] Mock模式已启用")
+            return
+            
         self.client = chromadb.PersistentClient(path=db_path)
         
         # 1. 初始化 Episodic Memory Collection (海马体)
@@ -55,41 +89,24 @@ class VectorDBService:
         # 这种格式让向量数据库知道"站在桌子前"和"站在冰箱前"是完全不同的
         return f"Location: {obs.agent.location}. Nearby: {nearby_str}. Holding: {obs.agent.holding}. Task: {obs.global_task}"
 
-    def add_episode(self, 
-                    episode_id: int, 
-                    pre_obs: ObservationPayload, 
-                    action: ActionPayload, 
-                    result: ActionExecutionResult):
-        """
-        将一次完整的经历存入向量库
-        """
-        # 1. 准备文档内容 (用于向量化搜索)
-        # 我们把 Context 和 Action 结合起来，这样我们就能搜到"在桌子前(Context)做了交互(Action)"的记录
-        document_text = self._serialize_observation(pre_obs) + f" -> Action: {action.type} {action.target_item or action.target_poi}"
-        
-        # 2. 准备元数据 (用于过滤和逻辑判断)
-        # Chroma 的 metadata 只支持 int, float, str, bool
-        meta = {
-            "episode_id": episode_id,
-            "timestamp": pre_obs.timestamp,
-            "action_type": action.type.value,
-            "action_target": action.target_item or action.target_poi or "None",
-            "success": result.success,
-            "failure_reason": result.failure_reason[:200] if result.failure_reason else "" # 截断防止过长
-        }
-        
-        # 3. 写入 Chroma
-        # 使用 UUID 防止冲突，虽然逻辑上我们用 episode_id 也可以
-        doc_id = f"ep_{episode_id}_{uuid.uuid4().hex[:8]}"
-        
-        self.episodes_collection.add(
-            documents=[document_text],
-            metadatas=[meta],
-            ids=[doc_id]
+    def add_episode(self, episode_id, pre_obs, action, result):
+        # 1. 构建强类型记录
+        record = MemoryRecord(
+            embedding_text=self._serialize_observation(pre_obs),
+            episode_id=episode_id,
+            timestamp=pre_obs.timestamp,
+            action_type=action.type, # Pydantic 会自动处理 Enum
+            target=action.target_item or "None",
+            success=result.success,
+            failure_reason=result.failure_reason,
+            raw_observation_json=pre_obs.model_dump_json() # 存下快照
         )
-        # print(f"💾 [VectorDB] Saved Episode #{episode_id} (Success: {result.success})")
+    
+        # 2. 解包写入 (安全！)
+        payload = record.to_chroma_payload()
+        self.episodes_collection.add(**payload)
 
-    def query_similar_failures(self, current_obs: ObservationPayload, top_k: int = 3) -> List[Dict]:
+    def query_similar_failures(self, current_obs: ObservationPayload, top_k: int = 3) -> List[MemorySearchResult]:
         """
         [M9 核心] 在做决策前，查查以前有没有在这里栽过跟头。
         只返回 result.success == False 的记录。
@@ -103,17 +120,21 @@ class VectorDBService:
         )
         
         # 解析 Chroma 的返回结构
-        history = []
-        if results["ids"] and results["ids"][0]:
-            for i in range(len(results["ids"][0])):
-                history.append({
-                    "id": results["ids"][0][i],
-                    "document": results["documents"][0][i],
-                    "metadata": results["metadatas"][0][i],
-                    "distance": results["distances"][0][i] # 距离越小越相似
-                })
-        return history
-
+        ids = results["ids"][0] if results["ids"] else []
+        docs = results["documents"][0] if results["documents"] else []
+        metas = results["metadatas"][0] if results["metadatas"] else []
+        dists = results["distances"][0] if results["distances"] else []
+        
+        return [
+            MemorySearchResult(
+                id=ids[i],
+                distance=dists[i],
+                content=docs[i],
+                metadata=metas[i]
+            ) 
+            for i in range(len(ids))
+        ]
+        
     # ==========================================
     # 💡 Semantic Memory (规则/偏置)
     # ==========================================

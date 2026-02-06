@@ -11,6 +11,7 @@ import re
 from schema.payload import ObservationPayload, ActionPayload, SystemResponses
 from service.llm_client import get_completion
 from core.memory import episodic_memory # 导入
+from service.vector_db import vector_db
 
 # ==========================================
 # 1. System Prompt (灵魂)
@@ -53,7 +54,7 @@ Your goal is to help the user with kitchen tasks.
 
 async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
     """
-    接收观察 -> 构建提示词 -> 获取建议 -> 解析为意图
+    接收观察 -> 检索记忆(M8+M9) -> 构建提示词 -> 获取建议
     """
     
     cube = next((obj for obj in obs.nearby_objects if obj.id == "red_cube"), None)
@@ -64,6 +65,33 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
             type="FINISH", 
             content="I have successfully placed the red cube in the fridge."
         )
+        
+    # ==========================================
+    # 🧠 [M9] 语义记忆检索 (Semantic Retrieval) 👈 NEW
+    # ==========================================
+    # 1. 构造查询意图
+ # 1. 构造查询上下文 (Query Context)
+    # 我们想问数据库："我现在在 {location}，周围有 {objects}，以前有没有学到什么教训？"
+    nearby_names = ", ".join([obj.id for obj in obs.nearby_objects])
+    query_context = f"Action at {obs.agent.location}. Nearby: {nearby_names}. Holding: {obs.agent.holding}"
+    
+    # 2. 去 Vector DB 查 Top-3 规则
+    # 比如：如果 current_location 是 table_center，它应该能把 "NEVER interact with table_center" 捞出来
+    relevant_rules = vector_db.query_relevant_rules(query_context, top_k=3)
+    
+    # ✅ FIX: 统一变量名为 semantic_block
+    semantic_block = "" 
+    if relevant_rules:
+        rules_str = "\n".join([f"- {rule}" for rule in relevant_rules])
+        semantic_block = f"""
+[🧠 KNOWN CONSTRAINTS / LEARNED BIAS]
+The following are critical rules learned from past experience. You MUST follow them:
+{rules_str}
+"""
+        print(f"📘 [M9] Injected {len(relevant_rules)} semantic rules: {rules_str}")
+    else:
+        # 可选：打印日志确认没有查到规则，防止"以为查到了其实没查到"
+        print(f"📘 [M9] No semantic rules found for context.")
 
     # [M8] 检索上次失败
     last_fail_ep = episodic_memory.get_last_failure()
@@ -72,6 +100,12 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
     if last_fail_ep:
         res = last_fail_ep.execution_result
         act = last_fail_ep.action
+        failure_context = f"""
+[❌ LAST ACTION FAILED]
+- Action: {act.type} {act.target_item or act.target_poi}
+- Error: {res.failure_reason}
+(Immediate Correction Required!)
+"""
         
         # 针对不同失败类型给出具体建议
         advice = ""
@@ -100,20 +134,27 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
         if advice:
             print(f"💡 [M8] Advice: {advice}")
 
-    # 1. 上下文构建 (Context Construction)
-    # 把复杂的对象列表变成简单的描述字符串
+    # ==========================================
+    # 📝 构建最终 Prompt
+    # ==========================================
+    # 辅助信息构建
     nearby_desc = []
     for obj in obs.nearby_objects:
         desc = f"{obj.id}({obj.state})"
         if obj.relation:
             desc += f" [{obj.relation}]"
         nearby_desc.append(desc)
-    
     nearby_str = ", ".join(nearby_desc) if nearby_desc else "Nothing special"
 
-    # 2. 构建 User Message (注入失败上下文)
+# ✅ 核心修复：把 semantic_block 塞进 user_msg
+    # 这里的顺序体现了认知优先级：
+    # 1. 长期记忆 (Semantic Block) -> 告诉我一般不能做什么
+    # 2. 短期记忆 (Failure Context) -> 告诉我刚才做错了什么
+    # 3. 当前状态 (Current State) -> 告诉我现在的环境
     user_msg = f"""
-    {failure_context} 
+    {semantic_block} 
+    
+    {failure_context}
     
     [CURRENT STATE]
     - Time: {obs.timestamp}
@@ -124,10 +165,10 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
     [GLOBAL TASK]
     {obs.global_task}
     
-    Based on the state, what is the next ATOMIC action?
+    Based on the Known Constraints and State, what is the next ATOMIC action?
     """
 
-    print(f"🤔 [Reasoning] Asking LLM...")
+    print(f"🤔 [Reasoning] Context loaded. Semantic Injection: {'YES' if semantic_block else 'NO'}")
 
     # 3. 调用 LLM (使用刚刚写的 Milestone 6)
     messages = [
