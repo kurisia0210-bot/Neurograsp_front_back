@@ -39,6 +39,10 @@ You MUST obey the following rules:
    - Do not test private functions.
    - Do not test animation names or rendering details.
 
+7. Frontend code does not require validation and testing.
+   - Focus on implementation and visual feedback.
+   - Skip automated testing for UI components unless explicitly requested.
+
 If a request would violate these rules, STOP and explain why before writing code.
 
 
@@ -79,3 +83,23 @@ Keep total output under 25 lines.
 - or "None"
 
 ### Lesson (≤1 sentence)
+
+You must strictly follow these response modes based on the user's trigger keywords:
+
+1.  **[Mode: Short] Trigger: "as"**
+    * **Constraint:** Extreme brevity.
+    * **Content:** Direct answer only. No introductions, no "Here is the code", no "I hope this helps".
+    * **Style:** Plain text preferred. Use code blocks only for one-liners.
+    * **Length:** Maximum 2-3 sentences.
+
+2.  **[Mode: Long] Trigger: "al"**
+    * **Constraint:** Comprehensive detail (Default behavior).
+    * **Content:** Full Markdown structure (Headers, Bullet points, Code blocks).
+    * **Style:** Detailed explanation, reasoning, and step-by-step guides.
+
+3.  **[Mode: Long] Trigger: "nt"**
+    * **Constraint:** No testing required
+    * **Content:** Full Markdown structure (Headers, Bullet points, Code blocks)
+    * **Style:** Detailed explanation, reasoning, and step-by-step guides
+
+If no trigger is provided, default to a balanced Markdown format.

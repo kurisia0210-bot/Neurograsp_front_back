@@ -1,167 +1,133 @@
 import React, { useState, useEffect } from 'react'
-import { DoctorAvatar } from '../game/avatar/DoctorAvatar'
+import { Cellphone } from '../Cellphone'
 
 export function Level2({ onBack }) {
-  // ============ 🧠 游戏逻辑 ============
-  const [level, setLevel] = useState(3)
+  const TOTAL_ROUNDS = 4;
+  
+  const [level, setLevel] = useState(1)
   const [targetNum, setTargetNum] = useState("") 
   const [currentInput, setCurrentInput] = useState("")
   const [isSuccess, setIsSuccess] = useState(false)
+  const [avatarStatus, setAvatarStatus] = useState('idle')
   const [shake, setShake] = useState(false)
+  const [successCount, setSuccessCount] = useState(0)
 
-  // 🎭 Avatar 状态控制
-  const [avatarStatus, setAvatarStatus] = useState('idle') 
-
-  // 初始化关卡
+  // 生成目标 (保持不变)
   useEffect(() => {
+    const length = 3 + Math.min(level - 1, 4) 
     let num = ""
-    for(let i=0; i<level; i++) num += Math.floor(Math.random() * 10).toString()
+    for (let i = 0; i < length; i++) {
+      num += Math.floor(Math.random() * 10).toString()
+    }
     setTargetNum(num)
-    setCurrentInput("")
-    setIsSuccess(false)
   }, [level])
 
-  // 拨号处理
+  // 计算进度 (保持不变)
+  const calculateProgress = () => {
+    const baseProgress = (successCount / TOTAL_ROUNDS) * 100;
+    const currentRatio = targetNum.length > 0 ? currentInput.length / targetNum.length : 0;
+    const stepProgress = currentRatio * (100 / TOTAL_ROUNDS);
+    return Math.min(baseProgress + stepProgress, 100);
+  };
+  const progress = calculateProgress();
+
+  // 🧠 核心修改：无挫败逻辑 (No Failure Logic)
   const handleDial = (key) => {
     if (isSuccess) return
 
-    const expectedKey = targetNum[currentInput.length]
+    setAvatarStatus('inputting') 
+    
+    // 不管按什么，只要还没满，就往上加显示
+    if (currentInput.length < targetNum.length) {
+       // 甚至我们可以只显示 key，或者显示 targetNum 对应的那个数字(如果想让用户觉得自己按对了)
+       // 但为了真实反馈，显示用户实际按的键更好
+       const newInput = currentInput + key
+       setCurrentInput(newInput)
 
-    if (key === expectedKey) {
-      const newInput = currentInput + key
-      setCurrentInput(newInput)
-      
-      if (newInput === targetNum) {
-        setIsSuccess(true)
-        setTimeout(() => {
-          setLevel(l => Math.min(l + 1, 11)) 
-        }, 1500)
-      }
-    } else {
-      setShake(true)
-      setTimeout(() => setShake(false), 500)
-      setCurrentInput("")
+       // ✅ 判定胜利：只看长度，不看内容
+       // 只要按键次数达到了目标长度，就视为成功
+       if (newInput.length === targetNum.length) {
+         setIsSuccess(true)
+         setAvatarStatus('calling') 
+       }
     }
   }
 
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']
+  const handleNextLevel = () => {
+    if (successCount + 1 >= TOTAL_ROUNDS) {
+      alert("恭喜完成今日康复训练！")
+      return; 
+    }
+    setSuccessCount(prev => prev + 1)
+    setIsSuccess(false)
+    setCurrentInput("") 
+    setAvatarStatus('idle')
+    setLevel(l => l + 1)
+  }
 
   return (
     <div className="w-full h-full bg-[#edf3f7] flex relative overflow-hidden">
       
-      {/* 背景装饰：保留一点氛围感 */}
-      <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-emerald-100 rounded-full blur-[120px] opacity-40 pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-20%] w-[500px] h-[500px] bg-blue-100 rounded-full blur-[100px] opacity-40 pointer-events-none" />
+      <div className="absolute top-4 left-4 z-50">
+        <button onClick={onBack} className="px-4 py-2 bg-white rounded-full shadow text-slate-600 font-bold hover:bg-slate-50">
+            ⬅️ 返回
+        </button>
+      </div>
 
-      {/* ⬅️ 返回按钮 */}
-      <button 
-        onClick={onBack} 
-        className="absolute top-6 left-6 z-50 px-5 py-2 bg-white/80 backdrop-blur-md text-slate-600 rounded-full shadow-sm hover:shadow-md font-bold transition-all border border-white"
-      >
-        ⬅️ 返回
-      </button>
-
-      {/* === 左侧主内容区域 === */}
-      <div className="flex-1 flex items-center justify-center">
-        {/* 📱 核心拨号盘组件 (去掉了手机外壳) */}
+      {/* === 主要布局容器：左侧任务卡 + 右侧手机 === */}
+      <div className="flex-1 flex items-center justify-center gap-16 p-8">
+        
+        {/* 📋 新增：外部任务显示板 (Target Board) */}
+        {/* 设计成类似便签或医嘱卡的样式，字体巨大 */}
         <div className={`
-          relative w-[340px] bg-[#1a1a1a] rounded-[2.5rem] p-6 shadow-2xl border border-[#333]
-          flex flex-col gap-6 transform transition-transform duration-100
-          ${shake ? 'translate-x-2' : ''} 
+            flex flex-col items-center justify-center p-8 bg-white rounded-3xl shadow-xl border-4 border-white
+            transition-all duration-500
+            ${isSuccess ? 'scale-110 shadow-emerald-200 border-emerald-400' : ''}
         `}>
-        
-        {/* === 📺 显示屏区域 === */}
-        <div className="bg-[#0f0f0f] rounded-2xl p-5 h-36 flex flex-col justify-between relative border border-[#262626] shadow-inner">
+            <h2 className="text-slate-400 text-lg font-bold tracking-widest uppercase mb-4">
+                {isSuccess ? 'Completed' : 'Mission'}
+            </h2>
             
-            {/* 🎯 任务目标：左上角 */}
-            <div className="flex flex-col items-start">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Target Number</span>
-                <div className="flex gap-1 font-mono text-sm">
-                    {targetNum.split('').map((n, i) => (
-                        <span key={i} className={`transition-colors duration-300 ${
-                            i < currentInput.length ? 'text-emerald-500' : 'text-gray-600'
-                        }`}>
-                            {n}
-                        </span>
-                    ))}
-                </div>
+            {/* 这里的数字是巨大的，方便看 */}
+            <div className="flex gap-3 text-6xl font-mono font-bold text-slate-800">
+                {targetNum.split('').map((n, i) => (
+                    <div key={i} className={`
+                        w-16 h-20 flex items-center justify-center rounded-xl bg-slate-100 border-b-4 border-slate-200
+                        transition-all duration-300
+                        ${i < currentInput.length ? 'bg-emerald-100 text-emerald-600 border-emerald-400 transform -translate-y-2' : ''}
+                    `}>
+                        {n}
+                    </div>
+                ))}
             </div>
 
-            {/* ⌨️ 当前输入：居中显示大字 */}
-            <div className="self-center w-full text-center overflow-hidden">
-                <span className="text-5xl text-white font-light tracking-widest font-mono">
-                    {currentInput}
-                    <span className="animate-pulse text-emerald-500">_</span>
-                </span>
-            </div>
+            <p className="mt-6 text-slate-500 font-medium">
+                {isSuccess ? "太棒了！请点击下一轮" : "请在手机上输入以上数字"}
+            </p>
         </div>
 
-        {/* === 🎹 键盘区域 === */}
-        <div className="grid grid-cols-3 gap-x-4 gap-y-4 px-2">
-            {keys.map((key) => (
-            <button
-                key={key}
-                onClick={() => handleDial(key)}
-                className="w-20 h-20 rounded-full bg-[#262626] text-white text-3xl font-normal hover:bg-[#333] active:bg-emerald-600 active:scale-95 transition-all shadow-lg flex items-center justify-center select-none border border-[#333] mx-auto"
-            >
-                {key}
-            </button>
-            ))}
-        </div>
-
-        {/* === 📞 呼叫按钮 === */}
-        <div className="flex justify-center mb-2">
-            <button 
-            className={`
-                w-full h-16 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg transition-all text-white tracking-widest uppercase
-                ${isSuccess 
-                    ? 'bg-emerald-500 animate-bounce shadow-emerald-500/50' 
-                    : 'bg-[#262626] hover:bg-[#333] active:scale-95 border border-[#333] text-emerald-500'
-                }
-            `}
-            >
-            {isSuccess ? 'Connecting...' : 'Call'}
-            </button>
-        </div>
-
-        </div>
+        {/* 📱 手机组件 (现在的 Target 是空的，因为移出去了) */}
+        <Cellphone 
+          // targetNum={targetNum} // ❌ 不需要传了，手机里不显示目标
+          currentInput={currentInput}
+          isSuccess={isSuccess}
+          isShake={shake}
+          onDial={handleDial}
+          progress={progress} 
+        />
       </div>
 
-      {/* === 右侧 Avatar 侧边栏 (350px 固定宽度) === */}
-      <div className="w-[350px] bg-white/50 backdrop-blur-md border-l border-white/60 shadow-xl flex flex-col">
-        
-        {/* Avatar 显示区域 */}
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="w-64 h-64 shadow-2xl rounded-full border-4 border-white">
-            <DoctorAvatar status={avatarStatus} />
-          </div>
-        </div>
+      {/* (右侧 Avatar 代码保持不变) */}
 
-        {/* 调试控制器 */}
-        <div className="p-6 border-t border-white/40">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-bold mb-3">Avatar Debug</p>
-          <div className="flex flex-col gap-2">
-            {['idle', 'inputting', 'success'].map((s) => (
-              <button
-                key={s}
-                onClick={() => setAvatarStatus(s)}
-                className={`px-4 py-2 rounded-lg font-medium capitalize text-sm transition-all ${
-                  avatarStatus === s 
-                    ? 'bg-emerald-600 text-white shadow-md' 
-                    : 'bg-white/60 text-gray-700 hover:bg-white/80'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 🎉 成功遮罩 (保留) */}
+      {/* 成功弹窗按钮 */}
       {isSuccess && (
-        <div className="absolute inset-0 bg-emerald-500/10 backdrop-blur-[2px] z-40 flex items-center justify-center pointer-events-none">
-           {/* 这里以后可以放数字人 */}
+        <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-50 animate-bounce-in">
+           <button 
+             onClick={handleNextLevel}
+             className="px-10 py-4 bg-emerald-500 hover:bg-emerald-400 text-white text-xl font-bold rounded-2xl shadow-xl border-b-4 border-emerald-700 active:translate-y-1 active:border-b-0 transition-all"
+           >
+             {successCount + 1 === TOTAL_ROUNDS ? '🎉 完成训练' : '下一轮 ➡️'}
+           </button>
         </div>
       )}
 

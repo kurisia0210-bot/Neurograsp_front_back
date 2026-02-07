@@ -63,10 +63,22 @@ try:
     # 添加一些语义规则
     vector_db.add_semantic_rule("NEVER interact with 'table_center', use 'table_surface' instead.")
     vector_db.add_semantic_rule("If hands are empty, pick up item first before trying to place it.")
+    vector_db.add_semantic_rule("CONSTRAINT: You CANNOT put items into 'fridge_main' if 'fridge_door' is CLOSED. You must OPEN 'fridge_door' first.")
     
-    # 假装这是 M9 的检索
-    results = vector_db.query_relevant_rules("I am at table_center")
-    print("✅ Relevant Rules:", results)
+    # 测试不同场景的检索
+    print("\n=== 测试不同场景的Semantic Memory检索 ===")
+    
+    # 场景1: 在桌子中心
+    results1 = vector_db.query_relevant_rules("I am at table_center")
+    print("✅ 场景1 (table_center) Relevant Rules:", results1)
+    
+    # 场景2: 在冰箱区域，手拿物品
+    results2 = vector_db.query_relevant_rules("Action at fridge_zone. Nearby: fridge_main, fridge_door. Holding: red_cube")
+    print("✅ 场景2 (fridge_zone with item) Relevant Rules:", results2)
+    
+    # 场景3: 手空的时候
+    results3 = vector_db.query_relevant_rules("Action at table_center. Nearby: red_cube. Holding: None")
+    print("✅ 场景3 (empty hands) Relevant Rules:", results3)
     
 except ImportError as e:
     print(f"❌ 导入错误: {e}")

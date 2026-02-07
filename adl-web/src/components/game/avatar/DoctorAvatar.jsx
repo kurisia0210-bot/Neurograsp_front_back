@@ -16,6 +16,7 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
   const [eyeOffsetX, setEyeOffsetX] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
   const [mouthVariant, setMouthVariant] = useState('idle');
+  const visualStatus = status === 'calling' ? 'success' : status;
 
   // === 🧠 逻辑 1: 眼神追踪 (保持不变) ===
   useEffect(() => {
@@ -78,6 +79,18 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
           50% { transform: rotate(-1.5deg) translateX(1px); }
         }
 
+        /* 3. 手臂上举动画 */
+        @keyframes arm-up {
+          0% {
+            transform: translateY(100%) rotate(10deg);
+            opacity: 0;
+          }
+          100% {
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+          }
+        }
+
         /* 应用类 */
         .anim-nod {
           animation: gentle-nod 4s ease-in-out infinite;
@@ -95,6 +108,10 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
           animation-delay: 0.5s; /* 稍微错开一点时间，更有层次感 */
           transform-origin: center top;
           transform-box: fill-box;
+        }
+        
+        .animate-arm-up {
+          animation: arm-up 0.5s ease-out forwards;
         }
       `}</style>
 
@@ -158,6 +175,19 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
           </g>
         </g>
       </svg>
+
+      {/* 📱 手机动画：只在 calling 状态下触发 */}
+      {status === 'calling' && (
+        <div className="absolute bottom-[10%] right-[40%] w-[60%] h-[60%] z-20 animate-arm-up pointer-events-none">
+          <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g transform="rotate(-20 100 100)">
+                <rect x="80" y="40" width="60" height="90" rx="6" fill="white" stroke={COLORS.stroke || "#2d3748"} strokeWidth="3"/>
+                <rect x="97" y="50" width="20" height="3" rx="1.5" fill="black" opacity="0.6"/>
+            </g>
+          </svg>
+        </div>
+      )}
+
     </div>
   );
 }
