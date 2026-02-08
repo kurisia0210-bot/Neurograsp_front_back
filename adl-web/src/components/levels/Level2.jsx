@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { Cellphone } from '../Cellphone'
+import { TargetBoard } from '../game/mechanics/TargetBoard';
+import { DoctorAvatar } from '../game/avatar/DoctorAvatar';
+
 
 export function Level2({ onBack }) {
   const TOTAL_ROUNDS = 4;
@@ -66,60 +69,57 @@ export function Level2({ onBack }) {
   }
 
   return (
-    <div className="w-full h-full bg-[#edf3f7] flex relative overflow-hidden">
+    <div className="w-full h-full bg-[#edf3f7] relative overflow-hidden">
       
+      {/* 返回按钮 */}
       <div className="absolute top-4 left-4 z-50">
         <button onClick={onBack} className="px-4 py-2 bg-white rounded-full shadow text-slate-600 font-bold hover:bg-slate-50">
             ⬅️ 返回
         </button>
       </div>
 
-      {/* === 主要布局容器：左侧任务卡 + 右侧手机 === */}
-      <div className="flex-1 flex items-center justify-center gap-16 p-8">
+      {/* 📐 布局核心：CSS Grid 
+         grid-cols-[1fr_auto_1fr]:
+         - 左侧 (1fr): 自动填满剩余空间，放 TaskBoard
+         - 中间 (auto): 根据手机宽度自适应，永远居中
+         - 右侧 (1fr): 自动填满剩余空间，放 Avatar
+         
+         gap-8: 组件之间的间距
+      */}
+      <div className="grid grid-cols-[1fr_auto_1fr] w-full h-full items-center justify-items-center px-10">
         
-        {/* 📋 新增：外部任务显示板 (Target Board) */}
-        {/* 设计成类似便签或医嘱卡的样式，字体巨大 */}
-        <div className={`
-            flex flex-col items-center justify-center p-8 bg-white rounded-3xl shadow-xl border-4 border-white
-            transition-all duration-500
-            ${isSuccess ? 'scale-110 shadow-emerald-200 border-emerald-400' : ''}
-        `}>
-            <h2 className="text-slate-400 text-lg font-bold tracking-widest uppercase mb-4">
-                {isSuccess ? 'Completed' : 'Mission'}
-            </h2>
-            
-            {/* 这里的数字是巨大的，方便看 */}
-            <div className="flex gap-3 text-6xl font-mono font-bold text-slate-800">
-                {targetNum.split('').map((n, i) => (
-                    <div key={i} className={`
-                        w-16 h-20 flex items-center justify-center rounded-xl bg-slate-100 border-b-4 border-slate-200
-                        transition-all duration-300
-                        ${i < currentInput.length ? 'bg-emerald-100 text-emerald-600 border-emerald-400 transform -translate-y-2' : ''}
-                    `}>
-                        {n}
-                    </div>
-                ))}
-            </div>
-
-            <p className="mt-6 text-slate-500 font-medium">
-                {isSuccess ? "太棒了！请点击下一轮" : "请在手机上输入以上数字"}
-            </p>
+        {/* 👈 左侧：任务板 (TargetBoard) */}
+        {/* justify-self-end: 让它尽量靠右（靠近手机），视觉上更紧凑 */}
+        {/* 左侧：任务板 */}
+        <div className="justify-self-end pr-10">
+            <TargetBoard 
+              targetNum={targetNum} 
+              currentInput={currentInput} 
+              isSuccess={isSuccess} 
+            />
         </div>
 
-        {/* 📱 手机组件 (现在的 Target 是空的，因为移出去了) */}
-        <Cellphone 
-          // targetNum={targetNum} // ❌ 不需要传了，手机里不显示目标
-          currentInput={currentInput}
-          isSuccess={isSuccess}
-          isShake={shake}
-          onDial={handleDial}
-          progress={progress} 
-        />
+        {/* 📱 中间：手机 */}
+        <div className="relative z-10">
+            <Cellphone 
+              targetNum={targetNum} // ✅ 关键：把目标号码传给手机，用于判断显示 *
+              currentInput={currentInput}
+              isShake={shake}
+              onDial={handleDial}
+              progress={progress} 
+            />
+        </div>
+
+        {/* 右侧：Avatar */}
+        <div className="justify-self-start pl-10 h-[600px] w-[400px] flex items-center relative">
+            <div className="scale-90 origin-left">
+                <DoctorAvatar status={avatarStatus} />
+            </div>
+        </div>
+
       </div>
 
-      {/* (右侧 Avatar 代码保持不变) */}
-
-      {/* 成功弹窗按钮 */}
+      {/* 🎉 成功弹窗按钮 (居中悬浮) */}
       {isSuccess && (
         <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-50 animate-bounce-in">
            <button 
