@@ -10,12 +10,19 @@ from pydantic import BaseModel, Field, ConfigDict
 # ==========================================
 
 class AgentActionType(str, Enum):
+    
+    # Level1
     MOVE_TO = "MOVE_TO"
     INTERACT = "INTERACT"
     THINK = "THINK"
     SPEAK = "SPEAK"
     IDLE = "IDLE"
     FINISH = "FINISH"
+    
+    # Level2
+    # 🎮 [Task 1 NEW] 游戏控制权
+    ADJUST_DIFFICULTY = "ADJUST_DIFFICULTY" # 调整目标长度
+    AUTO_PASS = "AUTO_PASS"                 # 自动通关 (预留给 Task 2)
 
 class ItemName(str, Enum):
     RED_CUBE = "red_cube"
@@ -86,9 +93,24 @@ class ActionPayload(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
     type: AgentActionType = Field(..., description="动作类型")
+    
+    # --- 现有字段 (保持不变) ---
     target_poi: Optional[PoiName] = Field(None, description="移动目标点")
     target_item: Optional[ItemName] = Field(None, description="交互目标物")
-    content: str = Field(..., description="思考内容或补充信息")
+    
+    # --- 🎮 [Task 1 NEW] 新增游戏控制字段 ---
+    # 只有当 type="ADJUST_DIFFICULTY" 时，Agent 才会填充这个字段
+    target_length: Optional[int] = Field(
+        None, 
+        ge=3, 
+        le=11, 
+        description="目标电话号码长度 (仅用于 ADJUST_DIFFICULTY)"
+    )
+
+    # --- 基础字段 ---
+    # 我们复用 content 字段作为"解释"或"气泡内容"
+    # 例如："Reducing difficulty level due to repeated failures."
+    content: str = Field(..., description="思考内容、解释原因或气泡文字")
 
 # ==========================================
 # 3. 系统响应常量 (System Responses)

@@ -4,10 +4,15 @@
 
 import os
 from openai import OpenAI, APIConnectionError, RateLimitError
+from dotenv import load_dotenv
 
 # 配置 (从环境变量读取更安全，这里为了方便硬编码)
-API_KEY = os.getenv("DEEPSEEK_API_KEY", "YOUR_API_KEY_HERE_DO_NOT_UPLOAD")
+load_dotenv()
+API_KEY = os.getenv("DEEPSEEK_API_KEY")
 BASE_URL = "https://api.deepseek.com"
+if not API_KEY:
+    raise ValueError("API Key not found! Check your .env file.")
+print(f"Key loaded: {API_KEY[:4]}***") 
 
 # 初始化客户端
 try:
