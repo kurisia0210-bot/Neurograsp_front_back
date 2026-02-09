@@ -1,17 +1,14 @@
+# adl-backend/schema/payload.py
 from enum import Enum
-from typing import List, Optional, Any
-# 👇 新增：必须导入 Pydantic 组件
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict 
-
-# ❌ 删除：from schema.enums import ... (因为都在下面定义了)
 
 # ==========================================
 # 1. 枚举定义 (Enum Definitions)
 # ==========================================
 
 class AgentActionType(str, Enum):
-    
-    # Level1
+    # Level 1 (Kitchen)
     MOVE_TO = "MOVE_TO"
     INTERACT = "INTERACT"
     THINK = "THINK"
@@ -19,7 +16,7 @@ class AgentActionType(str, Enum):
     IDLE = "IDLE"
     FINISH = "FINISH"
     
-    # Level2
+    # Level 2 (Phone Game)
     # 🎮 [Task 1 NEW] 游戏控制权
     ADJUST_DIFFICULTY = "ADJUST_DIFFICULTY" # 调整目标长度
     AUTO_PASS = "AUTO_PASS"                 # 自动通关 (预留给 Task 2)
@@ -31,7 +28,7 @@ class ItemName(str, Enum):
     FRIDGE_MAIN = "fridge_main"
     FRIDGE_DOOR = "fridge_door"
     STOVE = "stove"
-    # ✅ 新增：让桌子成为合法的交互对象
+    # ✅ 让桌子成为合法的交互对象
     TABLE_SURFACE = "table_surface"
 
 class PoiName(str, Enum):
@@ -64,24 +61,21 @@ class VisibleObject(BaseModel):
     state: ObjectState = Field(..., description="物体的物理状态")
     relation: Optional[str] = None
 
-# ✅ [M8] 新增：失败类型分类学
+# ✅ [M8] 失败类型分类学 (Agent 自身的失败 - L1/L2)
 class FailureType(str, Enum):
-    # 1. 认知层面的失败 (脑子乱了)
-    SCHEMA_ERROR = "SCHEMA_ERROR"       # 输出的 JSON 格式不对，或者字段校验失败 (System Confused)
-    REASONING_ERROR = "REASONING_ERROR" # 输出了合法的 JSON，但逻辑不通 (如 target=null 但 type=INTERACT)
+    # 1. 认知层面的失败 (脑子乱了 - L2)
+    SCHEMA_ERROR = "SCHEMA_ERROR"       # JSON 格式错误
+    REASONING_ERROR = "REASONING_ERROR" # 逻辑自相矛盾
+    GOAL_AMBIGUOUS = "GOAL_AMBIGUOUS"   # 目标模糊
     
-    # 2. 物理层面的失败 (被物理引擎拒绝)
-    REFLEX_BLOCK = "REFLEX_BLOCK"       # 被 adl_rules 驳回 (门没开，手不够长)
-    
-    # 3. 任务层面的失败
-    GOAL_AMBIGUOUS = "GOAL_AMBIGUOUS"   # 根本不知道要干嘛
+    # 2. 物理层面的失败 (被规则阻挡 - L1)
+    REFLEX_BLOCK = "REFLEX_BLOCK"       # 违反物理规则 (手短、门没开)
 
-# ✅ [M8] 新增：行动结果的元数据
-# 我们需要把它存进记忆里，而不仅仅是 ActionPayload
+# ✅ [M8] 行动结果元数据
 class ActionExecutionResult(BaseModel):
     success: bool
     failure_type: Optional[FailureType] = None
-    failure_reason: str = "" # 可读的错误信息 (给 LLM 看的)
+    failure_reason: str = "" # 可读错误信息
 
 class ObservationPayload(BaseModel):
     timestamp: float
@@ -94,12 +88,11 @@ class ActionPayload(BaseModel):
 
     type: AgentActionType = Field(..., description="动作类型")
     
-    # --- 现有字段 (保持不变) ---
+    # --- 现有字段 ---
     target_poi: Optional[PoiName] = Field(None, description="移动目标点")
     target_item: Optional[ItemName] = Field(None, description="交互目标物")
     
-    # --- 🎮 [Task 1 NEW] 新增游戏控制字段 ---
-    # 只有当 type="ADJUST_DIFFICULTY" 时，Agent 才会填充这个字段
+    # --- 🎮 [Task 1 NEW] 游戏控制字段 ---
     target_length: Optional[int] = Field(
         None, 
         ge=3, 
@@ -108,19 +101,18 @@ class ActionPayload(BaseModel):
     )
 
     # --- 基础字段 ---
-    # 我们复用 content 字段作为"解释"或"气泡内容"
-    # 例如："Reducing difficulty level due to repeated failures."
     content: str = Field(..., description="思考内容、解释原因或气泡文字")
 
 # ==========================================
-# 3. 系统响应常量 (System Responses)
+# 3. 系统响应常量 & 判决模型
 # ==========================================
+
 class SystemResponses:
-    # 必须在 ActionPayload 定义之后初始化
     pass
 
+# 先定义类，再赋值常量，避免 Pydantic 初始化问题
 SystemResponses.CONFUSED = ActionPayload(
-    type=AgentActionType.THINK, # 最好显式使用 Enum
+    type=AgentActionType.THINK,
     content="System Confused"
 )
 SystemResponses.SILENCE = ActionPayload(
@@ -128,24 +120,13 @@ SystemResponses.SILENCE = ActionPayload(
     content="..."
 )
 
-# 确保导入 ReflexVerdict (如果它定义在别的地方，可能需要调整导入结构，
-# 或者简单点，我们在这里定义一个简化的 verdict 模型，或者直接引用 adl_rules 的定义会循环引用)
-# 为了解耦，我们在 payload.py 定义一个数据传输用的 Verdict 模型
-
 class ReflexVerdict(str, Enum):
     ALLOW = "ALLOW"
     BLOCK = "BLOCK"
     IGNORE = "IGNORE"
-    # 未来可能还有 WARN, MANUAL_REVIEW 等
 
-# ... (AgentSelfState 等模型) ...
-
-# 👇 修改这个模型
 class ReflexVerdictModel(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
-
-    # ❌ 旧代码: verdict: str
-    # ✅ 新代码: 使用枚举，彻底消灭魔法字符串
     verdict: ReflexVerdict = Field(..., description="规则引擎的判决结果")
     message: str = Field(..., description="判决理由")
 
