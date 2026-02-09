@@ -1,95 +1,144 @@
 import React, { useState } from 'react';
-import { WaveBackground } from '../components/ui/WaveBackground'; 
+import { useAgentBridge } from '../components/game/hook/useAgentBridge';
 
 export function Playground() {
-  const [progress, setProgress] = useState(0);
+  const { isThinking, lastAction, verdict, callAgent } = useAgentBridge();
+  const [failCount, setFailCount] = useState(0);
+  const [triggered, setTriggered] = useState(false);
+
+  // 符合后端Schema的测试数据
+  const testObservation = {
+    timestamp: Date.now() / 1000,
+    agent: { 
+      location: "table_center",  // 必须是 PoiName 枚举值
+      holding: null              // 必须是 ItemName 枚举值或 null
+    },
+    nearby_objects: [
+      {
+        id: "red_cube",          // 必须是 ItemName 枚举值
+        state: "on_table",       // 必须是 ObjectState 枚举值
+        relation: "on the table"
+      },
+      {
+        id: "fridge_door",       // 必须是 ItemName 枚举值
+        state: "closed",         // 必须是 ObjectState 枚举值
+        relation: "front of agent"
+      }
+    ],
+    global_task: `MVP Test: Fail count = ${failCount}. ${failCount >= 3 ? 'Triggering Agent encouragement!' : 'Keep trying...'}`
+  };
+
+  const handleFailClick = async () => {
+    const newFailCount = failCount + 1;
+    setFailCount(newFailCount);
+    
+    console.log(`🎯 Fail count: ${newFailCount}`);
+    
+    // 短路逻辑：当fail=3时触发通信
+    if (newFailCount === 3 && !triggered) {
+      setTriggered(true);
+      console.log("🎯 触发短路逻辑：fail=3，请求Agent鼓励");
+      await callAgent(testObservation);
+    }
+  };
+
+  const handleReset = () => {
+    setFailCount(0);
+    setTriggered(false);
+  };
 
   return (
-    <div className="w-full min-h-screen bg-slate-800 flex flex-col items-center justify-center gap-12 p-10">
+    <div className="w-full min-h-screen bg-gray-900 flex flex-col items-center justify-center p-10">
+      <h1 className="text-3xl font-bold text-white mb-8">🎯 MVP Short-Circuit Test</h1>
       
-      {/* 📱 iPhone 5 Mockup (White) */}
-      {/* 外壳：改为白色背景，银色边框，圆角稍微收紧一点符合 iPhone 5 风格 */}
-      <div className="relative w-[320px] h-[640px] bg-white rounded-[2rem] border-[6px] border-slate-300 shadow-2xl shadow-slate-900/50 flex flex-col overflow-hidden">
-        
-        {/* === 🔼 Top Bezel (额头) === */}
-        <div className="h-20 bg-[#f0f0f0] flex flex-col items-center justify-center gap-2 pt-1 relative z-20 border-b border-slate-200">
-           {/* 听筒和传感器 */}
-           <div className="flex items-center gap-3">
-             <div className="w-2.5 h-2.5 bg-slate-800 rounded-full"></div> {/* Facetime Camera */}
-             <div className="w-14 h-1.5 bg-slate-400 rounded-full"></div>   {/* Speaker */}
-           </div>
-        </div>
-
-
-        {/* === 📺 Screen Area (显示屏) === */}
-        {/* 核心区域：WaveBackground 被限制在这里面 */}
-        {/* 设置黑色背景模拟熄屏状态，并加一点内边框模拟屏幕黑边 */}
-        <div className="flex-1 relative bg-black overflow-hidden border-x-2 border-black">
-            
-            {/* 🌊 屏幕背景层 (波浪) */}
-            <div className="absolute inset-0 z-0">
-                 <WaveBackground progress={progress} />
+      <div className="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-md w-full">
+        {/* MVP测试区域 */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-white">Fail Counter</h2>
+            <div className={`text-2xl font-bold ${failCount >= 3 ? 'text-red-400 animate-pulse' : 'text-yellow-400'}`}>
+              {failCount} / 3
             </div>
-
-            {/* 📱 屏幕 UI 层 (文字等) */}
-            {/* 注意：字体颜色改为深色，以适应浅色的波浪背景 */}
-            <div className="relative z-10 flex flex-col h-full p-5 text-slate-800 transition-colors duration-500">
-                
-                {/* 状态栏 (当进度低时，为了在黑底上看清，可以加个动态颜色，这里暂用深色) */}
-                <div className={`flex justify-between text-xs font-medium mb-8 ${progress < 20 ? 'text-white/80' : 'text-slate-800/80'}`}>
-                    <span>9:41 AM</span>
-                    <span>100% 🔋</span>
-                </div>
-
-                {/* 中间内容 */}
-                <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    {/* 模拟一个充电图标 */}
-                    <div className={`text-6xl mb-4 transition-all ${progress === 100 ? 'scale-110 text-emerald-600 animate-pulse' : 'text-slate-800'}`}>
-                        ⚡️
-                    </div>
-                    <div className="text-5xl font-light tracking-tighter">
-                        {progress}%
-                    </div>
-                    <div className="text-sm font-bold uppercase tracking-widest opacity-60">
-                        {progress === 100 ? 'Fully Charged' : 'Charging...'}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-        {/* === 🔽 Bottom Bezel (下巴) === */}
-        <div className="h-24 bg-[#f0f0f0] flex items-center justify-center relative z-20 border-t border-slate-200">
-           {/* Home Button */}
-           <button 
-             onClick={() => setProgress(0)} // 点击 Home 键重置，增加一点交互趣味
-             className="w-16 h-16 bg-white rounded-full border-[3px] border-slate-300 flex items-center justify-center shadow-sm active:bg-slate-100 active:scale-95 transition-all cursor-pointer"
-           >
-              {/* Home 键中间的方块图标 */}
-              <div className="w-5 h-5 rounded-[4px] border-[2px] border-slate-400"></div> 
-           </button>
-        </div>
-
-      </div>
-
-      {/* 🎛️ 外部控制台 */}
-      <div className="bg-slate-700/50 backdrop-blur-md border border-slate-600 p-6 rounded-2xl flex gap-4">
-        {[0, 25, 50, 75, 100].map((val) => (
+          </div>
+          
+          {/* Fail按钮 */}
           <button
-            key={val}
-            onClick={() => setProgress(val)}
-            className={`
-              px-5 py-2 rounded-xl font-bold transition-all border-b-4 active:border-b-0 active:translate-y-1 text-sm
-              ${progress === val 
-                ? 'bg-emerald-500 text-white border-emerald-700 shadow-lg' 
-                : 'bg-slate-800 text-slate-300 border-slate-900 hover:bg-slate-700'}
-            `}
+            onClick={handleFailClick}
+            disabled={failCount >= 3 || isThinking}
+            className={`w-full py-4 rounded-lg font-bold text-lg mb-4 transition-all ${
+              failCount >= 3 
+                ? 'bg-red-700 cursor-not-allowed' 
+                : isThinking
+                ? 'bg-yellow-600 cursor-not-allowed'
+                : 'bg-red-600 hover:bg-red-500 active:scale-95'
+            }`}
           >
-            {val}%
+            {failCount >= 3 ? '🎯 Triggered!' : '➕ Add Fail'}
           </button>
-        ))}
-      </div>
+          
+          {/* 重置按钮 */}
+          <button
+            onClick={handleReset}
+            className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-bold transition-all"
+          >
+            🔄 Reset Test
+          </button>
+          
+          {/* 短路逻辑状态 */}
+          <div className={`mt-4 p-3 rounded text-center ${failCount >= 3 ? 'bg-red-900/30 text-red-300' : 'bg-gray-900/30 text-gray-400'}`}>
+            {failCount >= 3 
+              ? '🎯 Short-circuit triggered! Agent called for encouragement.' 
+              : `Need ${3 - failCount} more fails to trigger Agent`}
+          </div>
+        </div>
 
+        {/* 状态显示 */}
+        <div className="space-y-4 border-t border-gray-700 pt-6">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Agent Status:</span>
+            <span className={isThinking ? 'text-yellow-400' : 'text-green-400'}>
+              {isThinking ? 'Thinking...' : 'Ready'}
+            </span>
+          </div>
+
+          {verdict && (
+            <div className={`p-3 rounded ${verdict.verdict === 'BLOCK' ? 'bg-red-900/50' : 'bg-green-900/50'}`}>
+              <div className="font-bold">
+                {verdict.verdict === 'BLOCK' ? '🛡️ BLOCKED' : '✅ ALLOWED'}
+              </div>
+              {verdict.message && (
+                <div className="text-sm mt-1 text-gray-300">{verdict.message}</div>
+              )}
+            </div>
+          )}
+
+          {lastAction && (
+            <div className="border-t border-gray-700 pt-4">
+              <div className="text-gray-400 text-sm mb-1">Last Action:</div>
+              <div className="font-mono text-sm bg-gray-900 p-3 rounded">
+                <div>Type: <span className="text-blue-400">{lastAction.type}</span></div>
+                {lastAction.content && (
+                  <div className="mt-1">Content: {lastAction.content}</div>
+                )}
+                {lastAction._status === 'BLOCKED' && (
+                  <div className="mt-1 text-red-400">Reason: {lastAction._reason}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 测试说明 */}
+          <div className="text-xs text-gray-500 mt-4">
+            <p className="mb-1">🎯 <strong>MVP Test Logic:</strong></p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li>Click "Add Fail" to increment counter</li>
+              <li>When fail count reaches 3, Agent is automatically called</li>
+              <li>Only one communication per trigger cycle</li>
+              <li>Reset to test again</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

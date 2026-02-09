@@ -5,18 +5,32 @@ import {
 } from './assets/DoctorParts'; 
 
 /**
- * 👨‍⚕️ DoctorAvatar (生动版)
+ * 👨‍⚕️ DoctorAvatar (语义状态版)
  * ---------------------------
- * 新增特性：
- * 1. 🌬️ Hair Sway: 头发随风微微摆动
- * 2. 🙇 Head Nod: 头部有节奏地微微点动
+ * 状态映射：
+ * - 'waiting' → 空闲等待 (原'idle')
+ * - 'processing' → 处理输入 (原'inputting')
+ * - 'completed' → 任务完成 (原'calling')
+ * - 'supporting' → 提供支持 (原'encouraging')
+ * - 'speaking' → 正在说话 (保持不变)
  */
-export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracking = false }) {
+export function DoctorAvatar({ status = 'waiting', className = '', disableEyeTracking = false }) {
   // === 🔒 内部状态 ===
   const [eyeOffsetX, setEyeOffsetX] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
-  const [mouthVariant, setMouthVariant] = useState('idle');
-  const visualStatus = status === 'calling' ? 'success' : status;
+  const [mouthVariant, setMouthVariant] = useState('idle'); // MOUTH_PATHS有'idle'键
+  
+  // 向后兼容：将旧状态映射到新状态
+  const semanticStatus = (() => {
+    switch(status) {
+      case 'idle': return 'waiting';
+      case 'inputting': return 'processing';
+      case 'calling': return 'completed';
+      case 'encouraging': return 'supporting';
+      case 'speaking': return 'speaking';
+      default: return status;
+    }
+  })();
 
   // === 🧠 逻辑 1: 眼神追踪 (保持不变) ===
   useEffect(() => {
@@ -42,20 +56,22 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
     return () => clearInterval(blinkLoop);
   }, []);
 
-  // === 🧠 逻辑 3: 嘴型 (保持不变) ===
+  // === 🧠 逻辑 3: 嘴型 (修复：使用正确的MOUTH_PATHS键) ===
   useEffect(() => {
     let interval;
-    if (status === 'inputting') { 
+    
+    // 使用语义状态进行判断，但映射到正确的MOUTH_PATHS键
+    if (semanticStatus === 'processing') { 
       interval = setInterval(() => {
         setMouthVariant(prev => prev === 'speaking' ? 'idle' : 'speaking');
       }, 150);
-    } else if (status === 'success') {
+    } else if (semanticStatus === 'completed') {
       setMouthVariant('success');
     } else {
-      setMouthVariant('idle');
+      setMouthVariant('idle'); // MOUTH_PATHS有'idle'键
     }
     return () => clearInterval(interval);
-  }, [status]);
+  }, [semanticStatus]);
 
   // === 🎨 渲染层 ===
   return (
@@ -176,8 +192,8 @@ export function DoctorAvatar({ status = 'idle', className = '', disableEyeTracki
         </g>
       </svg>
 
-      {/* 📱 手机动画：只在 calling 状态下触发 */}
-      {status === 'calling' && (
+      {/* 📱 手机动画：只在 completed 状态下触发 */}
+      {semanticStatus === 'completed' && (
         <div className="absolute bottom-[10%] right-[40%] w-[60%] h-[60%] z-20 animate-arm-up pointer-events-none">
           <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
             <g transform="rotate(-20 100 100)">

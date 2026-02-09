@@ -1,32 +1,22 @@
-# Code Review Report
-**Date:** 2026-01-28 | **Files:** `level1.jsx` + `GameCube.jsx` | **Rating:** ⭐⭐⭐⭐½ (9/10)
-
-## Constitution Compliance: ✅ PASS (6/6)
-1. ✅ **Explicit State** - All behaviors originate from explicit state
-2. ✅ **Semantic State** - Uses semantic state, not animation names
-3. ✅ **Monotonic Changes** - State flow is single-direction and traceable
-4. ✅ **Pure Rendering** - Rendering is pure function of state
-5. ✅ **Minimal Abstraction** - Single-responsibility components
-6. ✅ **Observable Behavior** - Interactions exposed via callbacks
-
 ## Review Record
 
-- Target: `src/components/game/mechanics/GameCube.jsx` + `src/components/levels/level1.jsx`
-- Change: 尺寸调整（Cube 1/4，BladeMachine 1/3），坐标修正，几何优化
+- Target: Level2及其import的组件（Level2.jsx, TargetBoard.jsx, Cellphone.jsx, DoctorAvatar.jsx, useAgentBridge.js）
+- Change：审查现有代码的宪法符合情况
 
 ### Constitution
 - Explicit state only: PASS
-- Semantic state (not animation): PASS
+- Semantic state (not animation): FAIL
 - Monotonic & explainable change: PASS
 - Pure render(state): PASS
 - Minimal abstraction: PASS
 - Behavior-based tests: N/A
 
 ### Decision
-- ACCEPT
+REFACTOR
 
 ### Violations
-- None
+- 语义状态（不是动画）→ DoctorAvatar.jsx使用动画名称（'idle', 'inputting', 'calling', 'encouraging'）作为状态，而不是语义状态
+- 语义状态（不是动画）→ Level2.jsx中avatarStatus使用动画名称而不是语义状态
 
 ### Lesson
-比例协调和精确计算是3D场景设计的关键。
+状态应该描述意图（如'waiting', 'processing', 'completed'）而不是动画效果，确保逻辑不依赖于动画名称。

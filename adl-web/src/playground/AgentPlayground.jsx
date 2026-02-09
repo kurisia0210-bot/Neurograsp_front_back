@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useAgentBridge } from '../components/game/hook/useAgentBridge';
 
 export function AgentPlayground() {
-  // === 1. 最简状态 ===
+  // === 1. 使用 Agent Bridge Hook ===
+  const { isThinking, lastAction, verdict, callAgent } = useAgentBridge();
+  
+  // === 2. 游戏状态 ===
   const [targetLength, setTargetLength] = useState(3); // 默认难度 3
   const [targetNum, setTargetNum] = useState("123");
   const [lastObs, setLastObs] = useState(null);
-  const [lastAction, setLastAction] = useState(null);
-  const [isThinking, setIsThinking] = useState(false);
   
   // 用于模拟连续失败次数，辅助生成 Observation
   const [failCount, setFailCount] = useState(0);
@@ -24,78 +26,57 @@ export function AgentPlayground() {
 
   // === 2. 模拟感知 (Perception) ===
   const perceiveWorld = (event) => {
+    // 这里的格式必须精确，一个标点都不能错，否则正则抓不到
+    const taskString = `Game: Memory Dialing. 
+  Target Number: ${targetNum} (Length: ${targetLength}). 
+  Current Event: User input was ${event}. 
+  Recent Failures: ${failCount}.`; // 👈 关键点：必须包含 "Recent Failures: 数字"
+
     return {
       timestamp: Date.now() / 1000,
-      // 必须符合 Python 的 AgentSelfState Schema，虽然这里没用
-      agent: { location: "table_center", holding: null }, 
-      // 必须符合 Python 的 VisibleObject Schema，传空数组
+      agent: { location: "table_center", holding: null }, // 假装在桌子旁
       nearby_objects: [], 
-      // 🌟 核心：把当前的游戏情况告诉 Agent
-      global_task: `Game: Memory Dialing. 
-Target Number: ${targetNum} (Length: ${targetLength}). 
-Current Event: User input was ${event}. 
-Recent Failures: ${event === 'WRONG' ? failCount + 1 : 0}.`
+      global_task: taskString // 👈 发给后端的暗号
     };
   };
-
-  // === 3. 你的标准 Tick 逻辑 (原封不动 + Action 处理) ===
+  // === 3. 使用 Agent Bridge 的新 Tick 逻辑 ===
   const tick = async (event) => {
-    if (isThinking) return;
-    setIsThinking(true);
+    // 1. 感知
+    const obs = perceiveWorld(event);
+    setLastObs(obs);
+    
+    // 更新本地计数器 (仅用于 UI 显示和辅助)
+    if (event === 'WRONG') setFailCount(c => c + 1);
+    if (event === 'CORRECT') setFailCount(0);
 
-    try {
-      // 1. 感知
-      const obs = perceiveWorld(event);
-      setLastObs(obs);
-      
-      // 更新本地计数器 (仅用于 UI 显示和辅助)
-      if (event === 'WRONG') setFailCount(c => c + 1);
-      if (event === 'CORRECT') setFailCount(0);
-
-      // 2. 发送给大脑
-      const response = await fetch('http://127.0.0.1:8001/api/tick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(obs)
-      });
-
-      if (!response.ok) throw new Error("Brain Network Error");
-      const data = await response.json();
-      
-      // 3. 处理判决 (你的标准代码)
-      const verdict = data.reflex_verdict?.verdict || "ALLOW"; // 简化兼容
-      const realAction = data.intent;
-
-      if (verdict === "BLOCK") {
-          console.warn(`🛡️ Blocked: ${data.reflex_verdict.message}`);
-          setLastAction({ ...realAction, blocked: true, reason: data.reflex_verdict.message });
-      } else {
-          // ✅ 4. 执行动作 (Execution)
-          setLastAction(realAction);
-          executeAction(realAction);
-      }
-
-    } catch (e) {
-      console.error("🔌 Brain disconnected:", e);
-      setLastAction({ type: "THINK", content: `Error: ${e.message}` });
-    } finally {
-      setIsThinking(false);
-    }
+    // 2. 使用 Agent Bridge 发送给大脑
+    await callAgent(obs);
+    
+    // 3. 执行动作 (在 useEffect 中处理)
   };
 
-  // === 4. 执行 Agent 的指令 ===
-  const executeAction = (action) => {
-    console.log("🦾 Executing:", action);
-
-    switch (action.type) {
+  // === 4. 监听 lastAction 变化并执行动作 ===
+  useEffect(() => {
+    if (!lastAction) return;
+    
+    console.log("🦾 Processing action from hook:", lastAction);
+    
+    // 检查是否被 Block
+    if (lastAction._status === 'BLOCKED') {
+      console.warn(`🛡️ Action blocked: ${lastAction._reason}`);
+      return;
+    }
+    
+    // 执行动作
+    switch (lastAction.type) {
       case 'ADJUST_DIFFICULTY':
         // 🎮 [Task 1 验证点] Agent 修改了 React 的状态
-        const newLen = action.target_length;
+        const newLen = lastAction.target_length;
         if (newLen && newLen !== targetLength) {
           setTargetLength(newLen);
           generateNewTarget(newLen);
           setFailCount(0); // 重置失败计数
-          alert(`🤖 Agent 介入：难度调整为 ${newLen} 位数！\n原因: ${action.content}`);
+          alert(`🤖 Agent 介入：难度调整为 ${newLen} 位数！\n原因: ${lastAction.content}`);
         }
         break;
         
@@ -105,9 +86,9 @@ Recent Failures: ${event === 'WRONG' ? failCount + 1 : 0}.`
         break;
 
       default:
-        console.log("Unmapped action:", action.type);
+        console.log("Unmapped action type:", lastAction.type);
     }
-  };
+  }, [lastAction, targetLength]);
 
   // === 5. 极简 UI ===
   return (
@@ -149,21 +130,42 @@ Recent Failures: ${event === 'WRONG' ? failCount + 1 : 0}.`
       <div className="w-1/2 bg-black text-green-400 p-6 rounded shadow-xl overflow-auto text-sm">
         <h2 className="border-b border-gray-700 pb-2 mb-4">Terminal Output</h2>
         
+        {/* Verdict 状态指示器 */}
+        <div className="mb-4">
+          <div className="text-gray-500">[Reflex Verdict]</div>
+          {verdict ? (
+            <div className={`p-2 rounded ${verdict.verdict === 'BLOCK' ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
+              <div className="font-bold">
+                {verdict.verdict === 'BLOCK' ? '🛡️ BLOCKED' : '✅ ALLOWED'}
+              </div>
+              {verdict.message && <div className="text-sm mt-1">{verdict.message}</div>}
+            </div>
+          ) : (
+            <div className="text-gray-600">Waiting for verdict...</div>
+          )}
+        </div>
+        
         <div className="mb-4">
           <div className="text-gray-500">[Last Observation]</div>
-          <div className="whitespace-pre-wrap">{lastObs?.global_task || "Waiting..."}</div>
+          <div className="whitespace-pre-wrap text-xs bg-gray-900 p-2 rounded mt-1">
+            {lastObs?.global_task || "Waiting..."}
+          </div>
         </div>
 
         <div>
           <div className="text-gray-500">[Last Action]</div>
           {lastAction ? (
-             <div className={lastAction.type === 'ADJUST_DIFFICULTY' ? "text-yellow-400 font-bold" : ""}>
-               {`Type: ${lastAction.type}`}
-               <br/>
-               {`Content: ${lastAction.content}`}
-               {lastAction.target_length && <><br/>{`Target Length: ${lastAction.target_length}`}</>}
-             </div>
-          ) : "None"}
+            <div className={`p-2 rounded mt-1 ${lastAction._status === 'BLOCKED' ? 'bg-red-900/30 border border-red-700' : lastAction.type === 'ADJUST_DIFFICULTY' ? 'bg-yellow-900/30 border border-yellow-700' : 'bg-gray-900/50'}`}>
+              <div className="font-bold">
+                {lastAction._status === 'BLOCKED' ? '🚫 BLOCKED: ' : ''}{lastAction.type}
+              </div>
+              {lastAction.content && <div className="text-sm mt-1">Content: {lastAction.content}</div>}
+              {lastAction.target_length && <div className="text-sm">Target Length: {lastAction.target_length}</div>}
+              {lastAction._reason && <div className="text-sm text-red-400 mt-1">Reason: {lastAction._reason}</div>}
+            </div>
+          ) : (
+            <div className="text-gray-600">No action yet</div>
+          )}
         </div>
       </div>
     </div>
