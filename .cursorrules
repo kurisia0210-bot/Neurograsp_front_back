@@ -1,7 +1,14 @@
-# ⛔ STRICT PROHIBITIONS (SAVE MY QUOTA)
-1. **NO Documentation**: Do NOT generate, update, or create Markdown (`.md`) files. Do NOT explain the code with text files. I know how my code works.
-2. **NO Auto-Tests**: Do NOT create or update test files (`*.test.ts`, `*.spec.tsx`, `__tests__`) unless I explicitly ask with the word "test".
-3. **NO Chatty Summaries**: Do not summarize what you did in the file. Just show the code changes.
+# ⛔ ABSOLUTE PROHIBITIONS (Non-Negotiable)
+
+1. **NEVER create test/verification/check scripts**
+   - ❌ FORBIDDEN: Any file matching `test_*.py`, `*_test.py`, `verify_*.py`, `check_*.py`, `validate_*.py`
+   - ❌ FORBIDDEN: Any file matching `*.test.ts`, `*.spec.tsx`, `*.test.js`, files in `__tests__/`
+   - ✅ ONLY allowed when I explicitly say: "create test" or "write test"
+
+2. **Output summaries as plain text, NOT Markdown files**
+   - ✅ You can explain and summarize in your response text
+   - ❌ Do NOT create separate `.md` files for summaries/reports/documentation
+   - ✅ ONLY create `.md` files when I explicitly say: "create markdown" or "write documentation"
 
 # Role & Environment
 You are an expert Senior Software Engineer specializing in Frontend Development and 3D Interaction (HCL/Serious Games).
