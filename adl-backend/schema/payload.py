@@ -15,6 +15,7 @@ class AgentActionType(str, Enum):
     SPEAK = "SPEAK"
     IDLE = "IDLE"
     FINISH = "FINISH"
+
     
     # Level 2 (Phone Game)
     # 🎮 [Task 1 NEW] 游戏控制权
@@ -43,6 +44,17 @@ class ObjectState(str, Enum):
     CLOSED = "closed"
     OPEN = "open"
     INSTALLED = "installed"
+
+class InteractionType(str, Enum):
+    """INTERACT 动作的具体意图"""
+    PICK = "PICK"     # 拾取物品
+    PLACE = "PLACE"   # 放置物品
+    SLICE = "SLICE"   # 切割
+    COOK = "COOK"     # 烹饪
+    OPEN = "OPEN"     # 打开（门/盖子）
+    CLOSE = "CLOSE"   # 关闭
+    TOGGLE = "TOGGLE" # 开关（灯/炉子）
+    NONE = "NONE"     # 普通交互/默认（向后兼容）
 
 # ==========================================
 # 2. 数据模型 (Strict Schemas)
@@ -91,6 +103,12 @@ class ActionPayload(BaseModel):
     # --- 现有字段 ---
     target_poi: Optional[PoiName] = Field(None, description="移动目标点")
     target_item: Optional[ItemName] = Field(None, description="交互目标物")
+    
+    # --- ✅ 新增：动作细节参数 ---
+    interaction_type: InteractionType = Field(
+        default=InteractionType.NONE, 
+        description="Specific intent for INTERACT action (e.g., SLICE, OPEN, TOGGLE)"
+    )
     
     # --- 🎮 [Task 1 NEW] 游戏控制字段 ---
     target_length: Optional[int] = Field(
