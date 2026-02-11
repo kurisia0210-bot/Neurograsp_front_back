@@ -5,63 +5,98 @@ from schema.payload import ObservationPayload, ActionPayload, SystemResponses, A
 from service.llm_client import get_completion
 from core.memory import episodic_memory 
 from service.vector_db import vector_db
+from typing import Optional
 
 
 class Watchdog:
-    def __init__(self, history_limit=5, idle_threshold=3):
+    def __init__(self, history_limit=6, move_threshold=4):
         """
-        :param history_limit: 滑动窗口大小，用于检测循环 (Loop)
-        :param idle_threshold: 连续空转阈值，用于检测犹豫 (Hesitation)
+        :param move_threshold: 允许连续移动/思考的最大次数。
+                               厨房很小，连续移动 4 次通常意味着迷路或瞎逛。
         """
         self.history_limit = history_limit
-        self.idle_threshold = idle_threshold
+        self.move_threshold = move_threshold
         
-        # 1. 针对“光想不做”：连续 IDLE/THINK 计数器
-        self.idle_streak = 0
-        
-        # 2. 针对“鬼打墙”：保留最近 N 次动作的签名 (Signature)
-        # deque 是一个双端队列，maxlen 会自动挤掉旧数据，非常适合做滑动窗口
+        # 1. 基础循环检测 (保留)
         self.action_window = deque(maxlen=history_limit)
-
-    def _get_signature(self, action: ActionPayload) -> str:
-        """
-        提取动作的'指纹'。
-        关键：必须忽略 action.content (LLM的碎碎念)，只看它实际上想干嘛。
-        """
-        # 格式：TYPE:TARGET_ITEM:TARGET_POI
-        # 例如：MOVE_TO:None:fridge_zone 或 INTERACT:fridge_main:None
-        return f"{action.type}:{action.target_item}:{action.target_poi}"
-
-    def inspect(self, action: ActionPayload) -> bool:
-        """
-        审查当前的动作。
-        如果发现异常（死循环/空转），返回 True (报警)。
-        """
-        signature = self._get_signature(action)
-
-        # === 🕵️‍♂️ 检测 1: 思想巨人 (Consecutive Thinking) ===
-        if action.type in ["THINK", "IDLE"]:
-            self.idle_streak += 1
-            if self.idle_streak >= self.idle_threshold:
-                print(f"🐕 Watchdog Barking: Agent is idling too long! ({self.idle_streak})")
-                return True # 报警！
-        else:
-            self.idle_streak = 0 # 只要动手了，空转计数归零
-
-        # === 🕵️‍♂️ 检测 2: 鬼打墙 (Loop Detection) ===
-        self.action_window.append(signature)
+        self.state_window = deque(maxlen=history_limit)
         
-        # 只有当窗口填满时（收集了足够多的证据）才开始判断
-        if len(self.action_window) == self.history_limit:
-            unique_moves = set(self.action_window)
-            # 判定逻辑：如果你走了 5 步，但实际上只在 1-2 种操作里打转
-            # 比如: A -> B -> A -> B -> A (5步，只有 A,B 两种) -> 判定为 Loop
-            if len(unique_moves) <= 2:
-                print(f"🐕 Watchdog Barking: Agent is running in circles! {list(unique_moves)}")
-                return True # 报警！
+        # 2. 🆕 生产力剃刀 (解决无效序列 & 进度倒退)
+        self.non_productive_streak = 0
+        self.last_holding = False # 记忆上一帧的手持状态
+
+    def _get_action_signature(self, action) -> str:
+        t_item = getattr(action, 'target_item', 'None')
+        t_poi = getattr(action, 'target_poi', 'None')
+        return f"{action.type}:{t_item}:{t_poi}"
+
+    def _get_world_hash(self, obs) -> str:
+        if not obs or not obs.agent: return "UNKNOWN"
+        loc = obs.agent.location
+        holding = str(obs.agent.holding)
+        return f"LOC:{loc}|HOLD:{holding}"
+
+    def inspect(self, action, obs) -> bool:
+        """
+        全能审查逻辑
+        """
+        # ======================================================
+        # 🛡️ 逻辑 A: 生产力剃刀 (The Productivity Razor)
+        # 解决: 1. 无效动作序列 (乱跑)
+        #       2. 进度倒退 (掉落)
+        # ======================================================
+        
+        current_holding = bool(obs.agent.holding)
+        
+        # [检测进度倒退]: 手里东西没了 (True -> False) 且不是完成任务
+        # 这比乱跑更严重，属于"负生产力"，直接报警
+        if self.last_holding and not current_holding and action.type != "FINISH":
+            print(f"🐕 Watchdog: PROGRESS REGRESSION! Item dropped/lost -> BARK!")
+            # 更新状态，防止连续报错
+            self.last_holding = current_holding 
+            self.non_productive_streak = 0 # 重置计数
+            return True
+
+        # 更新记忆
+        self.last_holding = current_holding
+
+        # [检测无效序列]: 区分生产性动作
+        if action.type in ["PICK", "PLACE", "INTERACT", "FINISH"]:
+            # 🎉 做了有意义的事，计数器归零
+            self.non_productive_streak = 0
+        else:
+            # 💤 只是在走位或发呆 (MOVE, THINK, IDLE)
+            self.non_productive_streak += 1
+            if self.non_productive_streak > self.move_threshold:
+                print(f"🐕 Watchdog: Wandering detected! {self.non_productive_streak} steps without interaction -> BARK!")
+                return True
+
+        # ======================================================
+        # 🛡️ 逻辑 B: 循环与停滞 (原有逻辑，兜底用)
+        # ======================================================
+        
+        # 1. 动作循环 (鬼打墙)
+        act_sig = self._get_action_signature(action)
+        self.action_window.append(act_sig)
+        if len(self.action_window) >= self.history_limit:
+            if len(set(self.action_window)) <= 2:
+                print(f"🐕 Watchdog: Action Loop -> BARK!")
+                return True
+
+        # 2. 状态停滞 (西西弗斯) - 只有非思考动作才检查
+        if action.type not in ["THINK", "IDLE"]:
+            state_hash = self._get_world_hash(obs)
+            self.state_window.append(state_hash)
+            if len(self.state_window) >= self.history_limit:
+                # 统计状态频率
+                counts = {}
+                for s in self.state_window: counts[s] = counts.get(s, 0) + 1
+                for s, c in counts.items():
+                    if c >= 3:
+                        print(f"🐕 Watchdog: State Stagnation ({s} x{c}) -> BARK!")
+                        return True
 
         return False
-
 
 # ==========================================
 # ReasoningEngine Class
@@ -106,6 +141,19 @@ Your goal is to help the user with kitchen tasks.
   "target_item": "red_cube" | "half_cube_left" | "half_cube_right" | "fridge_main" | "fridge_door" | "stove" | "table_surface" | null,
   "content": "Short reasoning for this action"
 }
+
+[CRITICAL INSTRUCTION FOR MULTI-STEP TASKS]
+If the task requires multiple steps (e.g., Pick -> Move -> Put) and you can perform the FIRST step immediately:
+1. Do NOT output a 'THINK' action to describe the plan.
+2. **EXECUTE the first step IMMEDIATELY.**
+3. Example: If you need to "put cube in box" and you are empty-handed, do NOT say "I need to pick up the cube". Instead, output specific action: {"type": "INTERACT", "target_item": "red_cube"}.
+
+[HANDLING MISSING ITEMS]
+If the target container (e.g., 'magic_box') is NOT visible:
+1. Do NOT freeze or just think about it.
+2. First, acquire the item (Pick up the cube).
+3. Then, start exploring/searching for the missing container.
+4. **Action > Planning.**
 """
 
     def __init__(self):
@@ -146,7 +194,8 @@ Your goal is to help the user with kitchen tasks.
         # ==========================================
         # 🛡️ 看门狗介入 (WATCHDOG CHECK)
         # ==========================================
-        if self.watchdog.inspect(action_payload):
+        # ✅ 新代码: 传入 action_payload 和 obs
+        if self.watchdog.inspect(action_payload, obs):
             print("🛑 L2 STAGNATION DETECTED. OVERRIDING ACTION.")
             return ActionPayload(
                 type="THINK",
