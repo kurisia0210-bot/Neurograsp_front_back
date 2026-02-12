@@ -13,33 +13,44 @@ You MUST obey the following rules:
    - OR BETTER: Use `node -e` scripts for file reading/searching as they are cross-platform and reliable.
 2. **Path Separator**: Always use forward slashes `/` or double backslashes `\\` in paths to avoid escaping issues.
 
-1. All behaviors must originate from explicit, inspectable state.
+3. **NO TEST FILES**: DO NOT create test/verification/check scripts unless explicitly requested.
+   - ❌ FORBIDDEN: Any file matching `test_*.py`, `*_test.py`, `verify_*.py`, `check_*.py`, `validate_*.py`
+   - ❌ FORBIDDEN: Any file matching `*.test.ts`, `*.spec.tsx`, `*.test.js`, files in `__tests__/`
+   - ✅ ONLY allowed when user explicitly says: "create test" or "write test"
+
+4. **NO AUTOMATIC MD SUMMARIES**: Output summaries as plain text, NOT Markdown files by default.
+   - ✅ You can explain and summarize in your response text
+   - ❌ Do NOT create separate `.md` files for summaries/reports/documentation by default
+   - ✅ ONLY create `.md` files when user explicitly says: "create markdown" or "write documentation"
+
+# Constitution Rules
+1. **Explicit state only**: All behaviors must originate from explicit, inspectable state.
    - No implicit behavior.
    - No hidden flags.
    - No behavior inferred from animation names or rendering artifacts.
 
-2. Semantic state MUST be used instead of animation names.
+2. **Semantic state (not animation)**: Semantic state MUST be used instead of animation names.
    - Animations are effects, never logic.
    - Logic must not branch on animation identifiers.
 
-3. Any continuous change must be:
+3. **Monotonic & explainable change**: Any continuous change must be:
    - monotonic
    - explainable in one sentence
    - traceable to a single state transition
 
-4. Rendering MUST be a pure function of state.
+4. **Pure render(state)**: Rendering MUST be a pure function of state.
    - No side effects in rendering.
    - No mutation during draw/update/render.
 
-5. Prefer minimal abstractions.
+5. **Minimal abstraction**: Prefer minimal abstractions.
    - Do not introduce patterns, inheritance, or indirection unless explicitly requested.
    - Simpler code is preferred over reusable code.
 
-6. Tests must verify observable behavior, not internal implementation.
+6. **Behavior-based tests**: Tests must verify observable behavior, not internal implementation.
    - Do not test private functions.
    - Do not test animation names or rendering details.
 
-7. Frontend code does not require validation and testing.
+7. **Frontend code testing**: Frontend code does not require validation and testing.
    - Focus on implementation and visual feedback.
    - Skip automated testing for UI components unless explicitly requested.
 
