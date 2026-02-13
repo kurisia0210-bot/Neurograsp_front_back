@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 
@@ -18,6 +18,12 @@ import { Pot } from '../Pot'
 import { BladeMachine } from '../game/mechanics/BladeMachine'
 import { GameAssistant } from '../game/avatar/GameAssistant'
 import { Holdable } from '../game/interaction/Holdable'
+
+// 🎮 游戏方块组件
+import { WholeCube, HalfCube } from '../game/mechanics/GameCube'
+
+// 🤖 Agent系统
+import { useAgentSystem } from '../game/agent/AgentSystem'
 
 // ==========================================
 // ❄️ 组件: 可交互冰箱 (保持不变)
@@ -57,157 +63,6 @@ export function InteractiveFridge({ position }) {
   )
 }
 
-// ==========================================
-// 📦 组件: 待切方块交互 (Pick -> Slice) (保持不变)
-// ==========================================
-export function WholeCubeInteractable({ initialPos, machinePos, tableHeight, onSlice }) {
-  const [state, setState] = useState('idle')
-  const cubeRef = useRef()
-  const effectiveHeight = tableHeight * 2
-  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -effectiveHeight), [effectiveHeight])
-
-  useFrame((ctx) => {
-    if (state === 'carrying' && cubeRef.current) {
-      ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera)
-      const target = new THREE.Vector3()
-      ctx.raycaster.ray.intersectPlane(dragPlane, target)
-      if (target) cubeRef.current.position.set(target.x, effectiveHeight + 0.15, target.z)
-    }
-  })
-
-  return (
-    <>
-      <group ref={cubeRef} position={initialPos}>
-        {state === 'idle' ? (
-          <Holdable duration={1.0} radius={0.25} onClick={() => setState('carrying')}>
-            <mesh>
-              <boxGeometry args={[0.25, 0.25, 0.25]} />
-              <meshStandardMaterial color="#ff6b6b" />
-            </mesh>
-            <Text position={[0, 0.3, 0]} fontSize={0.15} color="black">Hold to Pick</Text>
-          </Holdable>
-        ) : (
-          <mesh raycast={null}>
-            <boxGeometry args={[0.25, 0.25, 0.25]} />
-            <meshStandardMaterial color="#ff6b6b" opacity={0.8} transparent />
-          </mesh>
-        )}
-      </group>
-
-      {state === 'carrying' && (
-        <group position={machinePos}>
-          <Holdable duration={1.0} radius={0.3} onClick={() => {
-            if (cubeRef.current) cubeRef.current.position.set(machinePos[0], machinePos[1] + 0.125, machinePos[2])
-            if (onSlice) onSlice()
-          }}>
-            <mesh position={[0, 0.01, 0]}>
-              <boxGeometry args={[0.3, 0.02, 0.3]} />
-              <meshStandardMaterial color="#ff7675" opacity={0.3} transparent />
-            </mesh>
-            <mesh position={[0, 0.125, 0]}>
-              <boxGeometry args={[0.26, 0.26, 0.26]} />
-              <meshBasicMaterial wireframe color="#d63031" />
-            </mesh>
-            <Text position={[0, 0.4, 0]} fontSize={0.15} color="#d63031">Hold to Slice</Text>
-          </Holdable>
-        </group>
-      )}
-    </>
-  )
-}
-
-// ==========================================
-// 🍊 新组件: 切开的半块交互 (Pick -> Place to Fridge/Stove)
-// ==========================================
-function HalfCubeInteractable({
-  initialPos,
-  targetPos,
-  tableHeight,
-  type, // 'left' | 'right'
-  onPlaced
-}) {
-  const [state, setState] = useState('idle')
-  const itemRef = useRef()
-  const effectiveHeight = tableHeight * 2
-  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -effectiveHeight), [effectiveHeight])
-
-  useFrame((ctx) => {
-    if (state === 'carrying' && itemRef.current) {
-      ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera)
-      const target = new THREE.Vector3()
-      ctx.raycaster.ray.intersectPlane(dragPlane, target)
-      if (target) {
-        // 稍微抬高一点
-        itemRef.current.position.set(target.x, effectiveHeight + 0.15, target.z)
-      }
-    }
-  })
-
-  // 渲染半块形状 (红肉白皮)
-  const renderMesh = () => (
-    <group>
-      {type === 'left' ? (
-        <mesh>
-          <boxGeometry args={[0.1, 0.25, 0.25]} />
-          <meshStandardMaterial color="#ff6b6b" />
-          <mesh position={[0.051, 0, 0]} scale={[0.01, 0.24, 0.24]}>
-            <boxGeometry /><meshStandardMaterial color="#fff" />
-          </mesh>
-        </mesh>
-      ) : (
-        <mesh>
-          <boxGeometry args={[0.1, 0.25, 0.25]} />
-          <meshStandardMaterial color="#ff6b6b" />
-          <mesh position={[-0.051, 0, 0]} scale={[0.01, 0.24, 0.24]}>
-            <boxGeometry /><meshStandardMaterial color="#fff" />
-          </mesh>
-        </mesh>
-      )}
-    </group>
-  )
-
-  return (
-    <>
-      <group ref={itemRef} position={initialPos}>
-        {state === 'idle' ? (
-          <Holdable duration={0.8} radius={0.2} onClick={() => setState('carrying')}>
-            {renderMesh()}
-          </Holdable>
-        ) : (
-          <group raycast={state === 'carrying' ? null : undefined}>
-            {renderMesh()}
-          </group>
-        )}
-      </group>
-
-      {/* 🎯 目标放置区 (仅在搬运时显示) */}
-      {state === 'carrying' && (
-        <group position={targetPos}>
-          <Holdable
-            duration={1.0}
-            radius={0.35}
-            onClick={() => {
-              setState('placed')
-              if (itemRef.current) {
-                // 吸附到目标位置
-                itemRef.current.position.set(targetPos[0], targetPos[1], targetPos[2])
-                itemRef.current.rotation.set(0, 0, 0)
-              }
-              if (onPlaced) onPlaced()
-            }}
-          >
-            {/* 视觉提示：绿色虚线框 */}
-            <mesh position={[0, 0, 0]}>
-              <boxGeometry args={[0.3, 0.3, 0.3]} />
-              <meshBasicMaterial wireframe color="#2ecc71" />
-            </mesh>
-            <Text position={[0, 0.4, 0]} fontSize={0.2} color="#2ecc71">Hold to Place</Text>
-          </Holdable>
-        </group>
-      )}
-    </>
-  )
-}
 
 export function Level1({ onBack }) {
   // === 📏 坐标系统 ===
@@ -226,21 +81,6 @@ export function Level1({ onBack }) {
 
   // === 🧠 状态 ===
   const [isTriggered, setIsTriggered] = useState(false)
-
-  // === 🤖 Agent 身体状态 (The Missing Link) ===
-  const [agentState, setAgentState] = useState({
-    location: "table_center", // 对应你的 PoiName 枚举
-    holding: null             // 存物品 ID，例如 "red_cube"
-  })
-  
-  // ✅ 使用 useRef 存储最新状态，避免闭包陷阱
-  const agentStateRef = useRef(agentState)
-  
-  // 每次 agentState 更新时，同步更新 ref
-  useEffect(() => {
-    agentStateRef.current = agentState
-  }, [agentState])
-
   const [isSliced, setIsSliced] = useState(false)
   const [leftPlaced, setLeftPlaced] = useState(false)
   const [rightPlaced, setRightPlaced] = useState(false)
@@ -249,17 +89,172 @@ export function Level1({ onBack }) {
 
   // === 🤖 Agent 模式状态 ===
   const [agentMode, setAgentMode] = useState(false) // 手动/Agent 模式切换
-  const [isThinking, setIsThinking] = useState(false) // Agent 是否在思考
-  const [lastAction, setLastAction] = useState(null) // Agent 最后的动作
-
-  // === 📡 调试状态 ===
   const [showDebug, setShowDebug] = useState(false)
-  const [lastRequest, setLastRequest] = useState(null)
-  const [lastResponse, setLastResponse] = useState(null)
   const [customTask, setCustomTask] = useState("Put red cube in fridge")
 
   // 胜利条件：要么两个半块都放好，要么整个 cube 被成功放置（取决于任务）
   const isVictory = (leftPlaced && rightPlaced) || wholeCubePlaced
+
+  // === 🤖 使用AgentSystem ===
+  const agentSystem = useAgentSystem({
+    initialTask: customTask,
+    
+    // 获取世界状态的函数
+    getWorldState: (agentState) => {
+      const nearby_objects = []
+
+      // 1. 红方块状态（根据后端 payload 枚举值）
+      if (!isSliced && !wholeCubePlaced) {
+        // 整个 cube 还在桌上
+        nearby_objects.push({
+          id: "red_cube",          // ✅ ItemName.RED_CUBE
+          state: "on_table",       // ✅ ObjectState.ON_TABLE
+          relation: "on cutting board"
+        })
+      } else if (isSliced) {
+        // 切完后有两个半块
+        if (!leftPlaced) {
+          nearby_objects.push({
+            id: "half_cube_left",  // ✅ ItemName.HALF_CUBE_LEFT
+            state: "on_table",     // ✅ ObjectState.ON_TABLE
+            relation: "left piece on board"
+          })
+        }
+        if (!rightPlaced) {
+          nearby_objects.push({
+            id: "half_cube_right", // ✅ ItemName.HALF_CUBE_RIGHT
+            state: "on_table",     // ✅ ObjectState.ON_TABLE
+            relation: "right piece on board"
+          })
+        }
+      }
+      // 如果 wholeCubePlaced=true 且 !isSliced，说明整个 cube 已经被放走了，不显示
+
+      // 2. 冰箱
+      nearby_objects.push({
+        id: "fridge_main",         // ✅ ItemName.FRIDGE_MAIN
+        state: "installed",        // ✅ ObjectState.INSTALLED
+        relation: "storage appliance"
+      })
+      
+      // 2.1 冰箱门
+      nearby_objects.push({
+        id: "fridge_door",         // ✅ ItemName.FRIDGE_DOOR
+        state: fridgeDoorOpen ? "open" : "closed", // ✅ ObjectState.OPEN / CLOSED
+        relation: "fridge door"
+      })
+
+      // 3. 烤箱
+      nearby_objects.push({
+        id: "stove",               // ✅ ItemName.STOVE
+        state: "installed",        // ✅ ObjectState.INSTALLED
+        relation: "cooking appliance"
+      })
+
+      // 4. 桌面
+      nearby_objects.push({
+        id: "table_surface",       // ✅ ItemName.TABLE_SURFACE
+        state: "installed",        // ✅ ObjectState.INSTALLED
+        relation: "work surface"
+      })
+
+      return { nearby_objects }
+    },
+    
+    // 执行世界动作的函数
+    executeWorldAction: (actionPayload, agentState) => {
+      console.log("💪 [Level1 World] Executing:", actionPayload)
+      
+      const interactionType = actionPayload.interaction_type || "NONE"
+      const targetItem = actionPayload.target_item
+      
+      switch (interactionType) {
+        case "PICK":
+          console.log(`🦾 Agent: Picking up ${targetItem}...`)
+          break;
+          
+        case "PLACE":
+          console.log(`⬇️ Agent: Placing item onto ${targetItem}...`)
+          
+          // 根据目标位置执行放置
+          if (targetItem === "fridge_main") {
+            if (isSliced && !leftPlaced) {
+              setLeftPlaced(true)
+              console.log("❄️ Placed half cube in fridge!")
+            } else if (!isSliced && !wholeCubePlaced) {
+              setWholeCubePlaced(true)
+              console.log("❄️ Placed whole cube in fridge!")
+            }
+          } else if (targetItem === "stove") {
+            if (isSliced && !rightPlaced) {
+              setRightPlaced(true)
+              console.log("🔥 Placed half cube on stove!")
+            } else if (!isSliced && !wholeCubePlaced) {
+              setWholeCubePlaced(true)
+              console.log("🔥 Placed whole cube on stove!")
+            }
+          } else if (targetItem === "table_surface") {
+            console.log("📦 Placed on table")
+          }
+          break;
+          
+        case "SLICE":
+          if (targetItem === "red_cube" && !isSliced) {
+            console.log("🔪 Agent: Slicing cube...")
+            setIsTriggered(true)
+          } else {
+            console.warn("⚠️ Cannot slice:", targetItem)
+          }
+          break
+          
+        case "OPEN":
+          if (targetItem === "fridge_door") {
+            console.log("🚪 Agent: Opening fridge door...")
+            setFridgeDoorOpen(true)
+          }
+          break
+          
+        case "CLOSE":
+          if (targetItem === "fridge_door") {
+            console.log("🚪 Agent: Closing fridge door...")
+            setFridgeDoorOpen(false)
+          }
+          break
+          
+        case "TOGGLE":
+          if (targetItem === "stove") {
+            console.log("🔥 Agent: Toggling stove...")
+          }
+          break
+          
+        case "NONE":
+          // 向后兼容：旧版 payload 可能没有 interaction_type
+          console.log(`👀 Agent: Generic interaction with ${targetItem}`)
+
+          // 兼容旧逻辑（如果没有明确指定类型）
+          if (targetItem === "half_cube_left" && isSliced && !leftPlaced) {
+            console.log("❄️ (Compat) Placing left half in fridge...")
+            setLeftPlaced(true)
+          } else if (targetItem === "half_cube_right" && isSliced && !rightPlaced) {
+            console.log("🔥 (Compat) Placing right half on stove...")
+            setRightPlaced(true)
+          }
+          break
+          
+        default:
+          console.warn(`⚠️ Unknown interaction_type: ${interactionType} on ${targetItem}`)
+      }
+    },
+    
+    // 回调函数
+    onActionExecuted: (action, newState) => {
+      console.log("🎯 Action executed:", action.type, "New state:", newState)
+    },
+    
+    onTickComplete: (response, observation) => {
+      console.log("🔄 Tick completed")
+    }
+  })
 
   // === 🕹️ 逻辑回调 ===
   const handleSliceTrigger = () => {
@@ -273,257 +268,7 @@ export function Level1({ onBack }) {
     setLeftPlaced(false); setRightPlaced(false);
     setWholeCubePlaced(false);
     setFridgeDoorOpen(false);
-  }
-
-  // === 💪 Agent 执行系统 ===
-  // 返回更新后的 agentState（用于立即同步给后端）
-  const executeAction = (actionPayload) => {
-    console.log("💪 [Agent] Executing:", actionPayload)
-    
-    // ✅ 从 ref 获取最新状态，避免闭包陷阱
-    let newAgentState = { ...agentStateRef.current }
-
-    switch (actionPayload.type) {
-      case "INTERACT":
-        const interactionType = actionPayload.interaction_type || "NONE"
-        const targetItem = actionPayload.target_item
-
-        switch (interactionType) {
-          case 'PICK':
-            console.log(`🦾 Agent: Picking up ${targetItem}...`)
-            
-            // ✅ 关键修复：同时更新 React 状态、ref 和即时状态
-            newAgentState.holding = targetItem
-            agentStateRef.current = newAgentState
-            setAgentState(newAgentState)
-            console.log(`✅ Agent now holding: ${targetItem}`)
-            break;
-
-          case 'PLACE':
-            console.log(`⬇️ Agent: Placing item onto ${targetItem}...`)
-            
-            // ✅ 关键修复：同时更新 React 状态、ref 和即时状态
-            newAgentState.holding = null
-            agentStateRef.current = newAgentState
-            setAgentState(newAgentState)
-            
-            // 根据目标位置执行放置
-            if (targetItem === "fridge_main") {
-              if (isSliced && !leftPlaced) {
-                setLeftPlaced(true)
-                console.log("❄️ Placed half cube in fridge!")
-              } else if (!isSliced && !wholeCubePlaced) {
-                setWholeCubePlaced(true)
-                console.log("❄️ Placed whole cube in fridge!")
-              }
-            } else if (targetItem === "stove") {
-              if (isSliced && !rightPlaced) {
-                setRightPlaced(true)
-                console.log("🔥 Placed half cube on stove!")
-              } else if (!isSliced && !wholeCubePlaced) {
-                setWholeCubePlaced(true)
-                console.log("🔥 Placed whole cube on stove!")
-              }
-            } else if (targetItem === "table_surface") {
-              console.log("📦 Placed on table")
-            }
-            
-            console.log(`✅ Agent hands now empty`)
-            break;
-
-          case "SLICE":
-            if (targetItem === "red_cube" && !isSliced) {
-              console.log("🔪 Agent: Slicing cube...")
-              setIsTriggered(true)
-            } else {
-              console.warn("⚠️ Cannot slice:", targetItem)
-            }
-            break
-
-          case "OPEN":
-            if (targetItem === "fridge_door") {
-              console.log("🚪 Agent: Opening fridge door...")
-              setFridgeDoorOpen(true)
-            }
-            break
-          
-          case "CLOSE":
-            if (targetItem === "fridge_door") {
-              console.log("🚪 Agent: Closing fridge door...")
-              setFridgeDoorOpen(false)
-            }
-            break
-
-          case "TOGGLE":
-            if (targetItem === "stove") {
-              console.log("🔥 Agent: Toggling stove...")
-            }
-            break
-
-          case "NONE":
-            // 向后兼容：旧版 payload 可能没有 interaction_type
-            console.log(`👀 Agent: Generic interaction with ${targetItem}`)
-
-            // 兼容旧逻辑（如果没有明确指定类型）
-            if (targetItem === "half_cube_left" && isSliced && !leftPlaced) {
-              console.log("❄️ (Compat) Placing left half in fridge...")
-              setLeftPlaced(true)
-            } else if (targetItem === "half_cube_right" && isSliced && !rightPlaced) {
-              console.log("🔥 (Compat) Placing right half on stove...")
-              setRightPlaced(true)
-            }
-            break
-
-          default:
-            console.warn(`⚠️ Unknown interaction_type: ${interactionType} on ${targetItem}`)
-        }
-        break
-
-      case "MOVE_TO":
-        const targetPoi = actionPayload.target_poi
-        console.log(`🚶 Agent: Moving to ${targetPoi}...`)
-        
-        // ✅ 伪装移动成功（上帝视角模式，无需真实移动）
-        newAgentState.location = targetPoi
-        agentStateRef.current = newAgentState
-        setAgentState(newAgentState)
-        console.log(`✅ Agent now at: ${targetPoi}`)
-        break
-
-      case "THINK":
-        console.log("💭 Agent:", actionPayload.content)
-        break
-
-      case "SPEAK":
-        console.log("💬 Agent:", actionPayload.content)
-        // 未来可以显示对话气泡
-        break
-
-      case "IDLE":
-        console.log("⏸️ Agent: Idling...")
-        break
-
-      case "FINISH":
-        console.log("✅ Agent:", actionPayload.content)
-        break
-
-      default:
-        console.log("⚠️ Unknown action:", actionPayload.type)
-    }
-    
-    return newAgentState // 返回更新后的即时状态
-  }
-
-  // === 👁️ Agent 感知系统 ===
-  const perceiveWorld = (currentState = null) => {
-    // ✅ 使用 ref 获取最新状态，避免闭包陷阱
-    const state = currentState || agentStateRef.current
-    console.log(`👁️ [Perceive] Location: ${state.location}, Holding: ${state.holding}`)
-    const nearby_objects = []
-
-    // 1. 红方块状态（根据后端 payload 枚举值）
-    if (!isSliced && !wholeCubePlaced) {
-      // 整个 cube 还在桌上
-      nearby_objects.push({
-        id: "red_cube",          // ✅ ItemName.RED_CUBE
-        state: "on_table",       // ✅ ObjectState.ON_TABLE
-        relation: "on cutting board"
-      })
-    } else if (isSliced) {
-      // 切完后有两个半块
-      if (!leftPlaced) {
-        nearby_objects.push({
-          id: "half_cube_left",  // ✅ ItemName.HALF_CUBE_LEFT
-          state: "on_table",     // ✅ ObjectState.ON_TABLE
-          relation: "left piece on board"
-        })
-      }
-      if (!rightPlaced) {
-        nearby_objects.push({
-          id: "half_cube_right", // ✅ ItemName.HALF_CUBE_RIGHT
-          state: "on_table",     // ✅ ObjectState.ON_TABLE
-          relation: "right piece on board"
-        })
-      }
-    }
-    // 如果 wholeCubePlaced=true 且 !isSliced，说明整个 cube 已经被放走了，不显示
-
-    // 2. 冰箱
-    nearby_objects.push({
-      id: "fridge_main",         // ✅ ItemName.FRIDGE_MAIN
-      state: "installed",        // ✅ ObjectState.INSTALLED
-      relation: "storage appliance"
-    })
-    
-    // 2.1 冰箱门
-    nearby_objects.push({
-      id: "fridge_door",         // ✅ ItemName.FRIDGE_DOOR
-      state: fridgeDoorOpen ? "open" : "closed", // ✅ ObjectState.OPEN / CLOSED
-      relation: "fridge door"
-    })
-
-    // 3. 烤箱
-    nearby_objects.push({
-      id: "stove",               // ✅ ItemName.STOVE
-      state: "installed",        // ✅ ObjectState.INSTALLED
-      relation: "cooking appliance"
-    })
-
-    // 4. 桌面
-    nearby_objects.push({
-      id: "table_surface",       // ✅ ItemName.TABLE_SURFACE
-      state: "installed",        // ✅ ObjectState.INSTALLED
-      relation: "work surface"
-    })
-
-    return {
-      timestamp: Date.now() / 1000,
-      agent: {
-        location: state.location, // ✅ 使用最新状态
-        holding: state.holding,   // ✅ 使用最新状态
-      },
-      nearby_objects: nearby_objects,
-      global_task: customTask // 使用自定义任务
-    }
-  }
-
-  // === 🔄 Agent Tick 循环 ===
-  const tick = async () => {
-    if (isThinking || isVictory) return
-    setIsThinking(true)
-
-    try {
-      // 第一次感知：使用当前状态
-      const obs = perceiveWorld()
-      setLastRequest(obs) // 记录请求
-
-      const response = await fetch('http://127.0.0.1:8001/api/tick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(obs)
-      })
-
-      if (!response.ok) throw new Error(`Backend error: ${response.status}`)
-      const data = await response.json()
-      setLastResponse(data) // 记录响应
-
-      setLastAction(data.intent)
-
-      // 检测 Watchdog 报警
-      if (data.intent.content?.includes("STAGNATION") || data.intent.content?.includes("Stagnation")) {
-        console.warn("🐕 Watchdog Alert:", data.intent.content)
-      }
-
-      // ✅ 关键修复：执行动作并获取更新后的状态
-      const newState = executeAction(data.intent)
-      
-      // 注意：这里不需要再次 perceiveWorld，因为下一次 tick 会自动使用新状态
-
-    } catch (e) {
-      console.error("❌ Tick error:", e)
-    } finally {
-      setIsThinking(false)
-    }
+    agentSystem.resetAgent();
   }
 
   // === ⏱️ Agent 自动循环 ===
@@ -531,11 +276,11 @@ export function Level1({ onBack }) {
     if (!agentMode) return
 
     const interval = setInterval(() => {
-      tick()
+      agentSystem.tick()
     }, 3000) // 每3秒执行一次
 
     return () => clearInterval(interval)
-  }, [agentMode, isTriggered, isSliced, leftPlaced, rightPlaced, wholeCubePlaced, fridgeDoorOpen, isVictory, customTask])
+  }, [agentMode, agentSystem.tick])
 
   return (
     <div className="w-full h-full relative bg-[#edf3f7]">
@@ -595,15 +340,15 @@ export function Level1({ onBack }) {
       {agentMode && (
         <div className="absolute bottom-8 left-4 z-50 bg-black/80 text-green-400 p-3 rounded-lg font-mono text-xs max-w-xs">
           <div className="flex items-center gap-2 mb-2">
-            <span className={`w-2 h-2 rounded-full ${isThinking ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`}></span>
+            <span className={`w-2 h-2 rounded-full ${agentSystem.isThinking ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`}></span>
             <span className="font-bold">Agent 状态</span>
           </div>
           <div className="text-gray-300">
-            {isThinking ? "正在思考..." : "就绪"}
+            {agentSystem.isThinking ? "正在思考..." : "就绪"}
           </div>
-          {lastAction && (
+          {agentSystem.lastAction && (
             <div className="mt-2 text-yellow-300 text-[10px]">
-              最后动作: {lastAction.type}
+              最后动作: {agentSystem.lastAction.type}
             </div>
           )}
         </div>
@@ -621,9 +366,9 @@ export function Level1({ onBack }) {
             {/* 左侧：请求 */}
             <div className="p-3 overflow-y-auto">
               <div className="font-bold text-blue-600 mb-2 text-sm">📤 请求 (Frontend → Backend)</div>
-              {lastRequest ? (
+              {agentSystem.lastRequest ? (
                 <pre className="text-[10px] font-mono text-gray-800 whitespace-pre-wrap">
-                  {JSON.stringify(lastRequest, null, 2)}
+                  {JSON.stringify(agentSystem.lastRequest, null, 2)}
                 </pre>
               ) : (
                 <div className="text-gray-400 text-xs">等待请求...</div>
@@ -633,20 +378,20 @@ export function Level1({ onBack }) {
             {/* 右侧：响应 */}
             <div className="p-3 overflow-y-auto">
               <div className="font-bold text-green-600 mb-2 text-sm">📥 响应 (Backend → Frontend)</div>
-              {lastResponse ? (
+              {agentSystem.lastResponse ? (
                 <>
                   <div className="bg-yellow-50 border border-yellow-300 p-2 rounded text-xs mb-2">
                     <div className="font-bold text-yellow-700 mb-1">关键信息:</div>
-                    <div>动作: <span className="font-mono text-blue-600">{lastResponse.intent?.type}</span></div>
-                    {lastResponse.intent?.target_item && (
-                      <div>目标: <span className="font-mono text-green-600">{lastResponse.intent.target_item}</span></div>
+                    <div>动作: <span className="font-mono text-blue-600">{agentSystem.lastResponse.intent?.type}</span></div>
+                    {agentSystem.lastResponse.intent?.target_item && (
+                      <div>目标: <span className="font-mono text-green-600">{agentSystem.lastResponse.intent.target_item}</span></div>
                     )}
-                    {lastResponse.intent?.content && (
-                      <div className="text-gray-600 mt-1 text-[10px]">推理: {lastResponse.intent.content}</div>
+                    {agentSystem.lastResponse.intent?.content && (
+                      <div className="text-gray-600 mt-1 text-[10px]">推理: {agentSystem.lastResponse.intent.content}</div>
                     )}
                   </div>
                   <pre className="text-[10px] font-mono text-gray-800 whitespace-pre-wrap">
-                    {JSON.stringify(lastResponse, null, 2)}
+                    {JSON.stringify(agentSystem.lastResponse, null, 2)}
                   </pre>
                 </>
               ) : (
@@ -734,28 +479,39 @@ export function Level1({ onBack }) {
           // 🎮 手动模式：玩家拖拽
           <>
             {!isSliced ? (
-              <WholeCubeInteractable
-                initialPos={CUBE_START_POS}
-                machinePos={SLICING_ZONE_POS}
-                tableHeight={TABLE_HEIGHT}
-                onSlice={handleSliceTrigger}
+              <WholeCube
+                position={CUBE_START_POS}
+                dragHeight={EFFECTIVE_HEIGHT}
+                slicingZonePos={SLICING_ZONE_POS}
+                slicingZoneSize={[0.3, 0.3]}
+                onDrag={({ position, shouldSlice }) => {
+                  if (shouldSlice) {
+                    handleSliceTrigger()
+                  }
+                }}
               />
             ) : (
               <>
-                <HalfCubeInteractable
-                  type="left"
-                  initialPos={[SLICING_ZONE_POS[0] - 0.1, EFFECTIVE_HEIGHT + 0.15, SLICING_ZONE_POS[2]]}
-                  targetPos={TARGET_FRIDGE_POS}
-                  tableHeight={TABLE_HEIGHT}
-                  onPlaced={() => setLeftPlaced(true)}
-                />
-                <HalfCubeInteractable
-                  type="right"
-                  initialPos={[SLICING_ZONE_POS[0] + 0.1, EFFECTIVE_HEIGHT + 0.15, SLICING_ZONE_POS[2]]}
-                  targetPos={TARGET_STOVE_POS}
-                  tableHeight={TABLE_HEIGHT}
-                  onPlaced={() => setRightPlaced(true)}
-                />
+                {!leftPlaced && (
+                  <HalfCube
+                    initialPos={[SLICING_ZONE_POS[0] - 0.125, EFFECTIVE_HEIGHT, SLICING_ZONE_POS[2]]}
+                    targetPos={TARGET_FRIDGE_POS}
+                    dragHeight={EFFECTIVE_HEIGHT}
+                    type="left"
+                    rotation={[0, 0, 0]}
+                    onPlaced={() => setLeftPlaced(true)}
+                  />
+                )}
+                {!rightPlaced && (
+                  <HalfCube
+                    initialPos={[SLICING_ZONE_POS[0] + 0.125, EFFECTIVE_HEIGHT, SLICING_ZONE_POS[2]]}
+                    targetPos={TARGET_STOVE_POS}
+                    dragHeight={EFFECTIVE_HEIGHT}
+                    type="right"
+                    rotation={[0, 0, 0]}
+                    onPlaced={() => setRightPlaced(true)}
+                  />
+                )}
               </>
             )}
           </>
@@ -772,14 +528,14 @@ export function Level1({ onBack }) {
               // 切完的两个半块
               <>
                 {!leftPlaced && (
-                  <mesh position={[SLICING_ZONE_POS[0] - 0.1, EFFECTIVE_HEIGHT + 0.15, SLICING_ZONE_POS[2]]}>
-                    <boxGeometry args={[0.1, 0.25, 0.25]} />
+                  <mesh position={[SLICING_ZONE_POS[0] - 0.125, EFFECTIVE_HEIGHT, SLICING_ZONE_POS[2]]}>
+                    <boxGeometry args={[0.125, 0.25, 0.25]} />
                     <meshStandardMaterial color="#ff6b6b" />
                   </mesh>
                 )}
                 {!rightPlaced && (
-                  <mesh position={[SLICING_ZONE_POS[0] + 0.1, EFFECTIVE_HEIGHT + 0.15, SLICING_ZONE_POS[2]]}>
-                    <boxGeometry args={[0.1, 0.25, 0.25]} />
+                  <mesh position={[SLICING_ZONE_POS[0] + 0.125, EFFECTIVE_HEIGHT, SLICING_ZONE_POS[2]]}>
+                    <boxGeometry args={[0.125, 0.25, 0.25]} />
                     <meshStandardMaterial color="#ff6b6b" />
                   </mesh>
                 )}
