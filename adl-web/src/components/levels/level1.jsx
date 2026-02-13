@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
 
@@ -26,7 +26,7 @@ import { WholeCube, HalfCube } from '../game/mechanics/GameCube'
 import { useAgentSystem } from '../game/agent/AgentSystem'
 
 // ==========================================
-// ❄️ 组件: 可交互冰箱 (保持不变)
+// ❄️ 组件: 可交互冰箱 (暂时去掉Holdable)
 // ==========================================
 export function InteractiveFridge({ position }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -46,18 +46,25 @@ export function InteractiveFridge({ position }) {
         <meshStandardMaterial color="#dfe6e9" />
       </mesh>
 
-      {/* 旋转门 */}
-      <group ref={doorGroupRef} position={[0.5, 1, 0.51]}>
-        <Holdable duration={1.0} radius={0.3} onClick={() => setIsOpen(!isOpen)}>
-          <mesh position={[-0.5, 0, 0]}>
-            <boxGeometry args={[1, 2, 0.05]} />
-            <meshStandardMaterial color={isOpen ? "#b2bec3" : "#dfe6e9"} />
-          </mesh>
-          <mesh position={[-0.9, 0, 0.05]}>
-            <boxGeometry args={[0.05, 0.4, 0.05]} />
-            <meshStandardMaterial color="#636e72" />
-          </mesh>
-        </Holdable>
+      {/* 旋转门 - 暂时去掉Holdable，直接点击 */}
+      <group 
+        ref={doorGroupRef} 
+        position={[0.5, 1, 0.51]}
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsOpen(!isOpen)
+        }}
+        onPointerOver={() => (document.body.style.cursor = 'pointer')}
+        onPointerOut={() => (document.body.style.cursor = 'auto')}
+      >
+        <mesh position={[-0.5, 0, 0]}>
+          <boxGeometry args={[1, 2, 0.05]} />
+          <meshStandardMaterial color={isOpen ? "#b2bec3" : "#dfe6e9"} />
+        </mesh>
+        <mesh position={[-0.9, 0, 0.05]}>
+          <boxGeometry args={[0.05, 0.4, 0.05]} />
+          <meshStandardMaterial color="#636e72" />
+        </mesh>
       </group>
     </group>
   )

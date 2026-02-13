@@ -6,6 +6,10 @@ import { OrthographicCamera, Grid } from '@react-three/drei'
 // 导入新的AgentSystem
 import { useAgentSystem } from '../components/game/agent/AgentSystem'
 
+// 导入DoctorAvatar和NotificationBubble
+import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
+import { NotificationBubble } from '../components/game/items/NotificationBubble'
+
 // ==========================================
 // 🧠 Dashboard (保持不变)
 // ==========================================
@@ -32,15 +36,44 @@ const AgentBrainDashboard = ({ observation, action, isThinking }) => {
   )
 }
 
-export function AgentPlayground() {
+export function AgentPlayground({ onBack }) {
   // === 🌍 World State ===
   const [fridgeOpen, setFridgeOpen] = useState(false)
   const [cubePos, setCubePos] = useState([-0.4, 1.7 + 0.125, -0.5])
   const [cubeState, setCubeState] = useState("on_table")
+  
+  // === 🗣️ Agent步骤说明 ===
+  const [agentStep, setAgentStep] = useState("等待Agent指令...")
+  const [showArrowAnimation, setShowArrowAnimation] = useState(false)
+  const [currentTaskStep, setCurrentTaskStep] = useState(0)
 
   // === 🤖 使用AgentSystem ===
   const agentSystem = useAgentSystem({
     initialTask: "Put red cube in fridge",
+    
+    // 添加onTickComplete回调来获取Agent的推理
+    onTickComplete: (response, observation) => {
+      console.log("🔄 Tick completed")
+      
+      // 提取Agent的推理内容
+      if (response?.intent?.content) {
+        const agentReasoning = response.intent.content
+        setAgentStep(agentReasoning)
+        
+        // 检测任务步骤变化
+        detectTaskStepChange(agentReasoning)
+      }
+    },
+    
+    // 添加onActionExecuted回调来检测任务完成
+    onActionExecuted: (action, newState) => {
+      console.log("🎯 Action executed:", action.type, "New state:", newState)
+      
+      // 当动作执行成功时，触发箭头动画
+      if (action.type === "EXECUTE_WORLD_ACTION") {
+        triggerArrowAnimation()
+      }
+    },
     
     // 获取世界状态的函数
     getWorldState: (agentState) => {
@@ -130,17 +163,42 @@ export function AgentPlayground() {
         default:
           console.log(`⚠️ Unknown interaction: ${interactionType}`)
       }
-    },
-    
-    // 回调函数
-    onActionExecuted: (action, newState) => {
-      console.log("🎯 Action executed:", action.type, "New state:", newState)
-    },
-    
-    onTickComplete: (response, observation) => {
-      console.log("🔄 Tick completed")
     }
   })
+
+  // === 🔄 任务步骤检测和动画触发 ===
+  
+  // 检测任务步骤变化
+  const detectTaskStepChange = (agentReasoning) => {
+    // 简单的关键词检测逻辑
+    const stepKeywords = [
+      "拿起", "pick up", "拿起cube", "拿起红方块",
+      "打开", "open", "打开冰箱", "打开冰箱门",
+      "放入", "place", "放入冰箱", "放入红方块",
+      "关闭", "close", "关闭冰箱", "关闭冰箱门"
+    ]
+    
+    let newStep = currentTaskStep
+    stepKeywords.forEach((keyword, index) => {
+      if (agentReasoning.toLowerCase().includes(keyword.toLowerCase())) {
+        newStep = Math.floor(index / 4) // 每4个关键词一个步骤
+      }
+    })
+    
+    if (newStep !== currentTaskStep) {
+      setCurrentTaskStep(newStep)
+    }
+  }
+
+  // 触发箭头动画
+  const triggerArrowAnimation = () => {
+    setShowArrowAnimation(true)
+    
+    // 1.5秒后自动关闭动画（与动画持续时间匹配）
+    setTimeout(() => {
+      setShowArrowAnimation(false)
+    }, 1500)
+  }
 
   // === 🎨 渲染部分 ===
   const TABLE_HEIGHT = 0.85
@@ -153,13 +211,40 @@ export function AgentPlayground() {
     return [0, 0, 2] // table_center
   }
 
+  // 获取DoctorAvatar状态
+  const getDoctorAvatarStatus = () => {
+    if (agentSystem.isThinking) return "thinking"
+    if (agentSystem.agentState.holding) return "active"
+    return "idle"
+  }
+
   return (
     <div className="w-full h-full relative bg-[#1e1e1e]">
+      {/* 🔙 返回主页面按钮 - 移到右上角避免重叠 */}
+      {onBack && (
+        <button 
+          onClick={onBack} 
+          className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur text-gray-700 rounded-full shadow-sm hover:bg-gray-100 font-bold transition-all"
+        >
+          <span>⬅️</span> 返回主页面
+        </button>
+      )}
+      
       <AgentBrainDashboard 
         observation={agentSystem.lastObservation} 
         action={agentSystem.lastAction} 
         isThinking={agentSystem.isThinking} 
       />
+      
+      {/* 顶部通知气泡 - 显示Agent的具体步骤 */}
+      <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
+        <NotificationBubble 
+          text={agentStep}
+          subText="Agent正在执行任务..."
+          style={{ transform: 'translateY(-20px)' }}
+          showArrowAnimation={showArrowAnimation}
+        />
+      </div>
       
       {/* 底部控制栏 */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3 w-96">
@@ -192,6 +277,13 @@ export function AgentPlayground() {
           >
             RESET
           </button>
+          {/* 测试箭头动画按钮 */}
+          <button 
+            onClick={() => triggerArrowAnimation()}
+            className="px-6 py-2 bg-purple-600 text-white font-bold rounded shadow-lg hover:bg-purple-700 transition-colors"
+          >
+            测试箭头
+          </button>
         </div>
       </div>
 
@@ -207,7 +299,7 @@ export function AgentPlayground() {
           <meshStandardMaterial color="#636e72" />
         </mesh>
         
-        {/* Agent角色 */}
+        {/* Agent角色 - 保持原来的胶囊体 */}
         <group position={getAgentVisualPosition()}>
           <mesh position={[0, 1, 0]}>
             <capsuleGeometry args={[0.3, 1, 4]} />
@@ -239,6 +331,23 @@ export function AgentPlayground() {
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
       
+      {/* DoctorAvatar - 作为2D UI元素放在Canvas外部 */}
+      <div 
+        className="absolute z-50"
+        style={{
+          left: '50%',
+          top: '50%',
+          transform: `translate(${getAgentVisualPosition()[0] * 50 + 50}px, ${-getAgentVisualPosition()[2] * 50 + 50}px)`,
+          width: '120px',
+          height: '120px'
+        }}
+      >
+        <DoctorAvatar 
+          status={getDoctorAvatarStatus()}
+          disableEyeTracking={false}
+        />
+      </div>
+      
       {/* 状态显示 */}
       <div className="absolute top-4 left-4 z-50 bg-black/80 text-green-400 p-3 rounded-lg font-mono text-xs max-w-xs">
         <div className="flex items-center gap-2 mb-2">
@@ -250,6 +359,7 @@ export function AgentPlayground() {
           <div>手持: {agentSystem.agentState.holding || "空手"}</div>
           <div>任务: {agentSystem.userInstruction}</div>
           <div>模式: {agentSystem.autoLoop ? "自动" : "手动"}</div>
+          <div>Avatar状态: {getDoctorAvatarStatus()}</div>
           {agentSystem.lastAction && (
             <div className="mt-2 text-yellow-300">
               最后动作: {agentSystem.lastAction.type}
