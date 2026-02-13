@@ -13,10 +13,12 @@ You MUST obey the following rules:
    - OR BETTER: Use `node -e` scripts for file reading/searching as they are cross-platform and reliable.
 2. **Path Separator**: Always use forward slashes `/` or double backslashes `\\` in paths to avoid escaping issues.
 
-3. **NO TEST FILES**: DO NOT create test/verification/check scripts unless explicitly requested.
+3. **NO TESTING & NO AUTO-COMMIT**: DO NOT perform any testing behavior or create test files, and DO NOT automatically commit code.
+   - ❌ FORBIDDEN: Any testing behavior (running tests, creating test files, test verification)
    - ❌ FORBIDDEN: Any file matching `test_*.py`, `*_test.py`, `verify_*.py`, `check_*.py`, `validate_*.py`
    - ❌ FORBIDDEN: Any file matching `*.test.ts`, `*.spec.tsx`, `*.test.js`, files in `__tests__/`
-   - ✅ ONLY allowed when user explicitly says: "create test" or "write test"
+   - ❌ FORBIDDEN: Automatic git commit or push without explicit user approval
+   - ✅ ONLY allowed when user explicitly says: "create test" or "write test" or "commit code"
 
 4. **NO AUTOMATIC MD SUMMARIES**: Output summaries as plain text, NOT Markdown files by default.
    - ✅ You can explain and summarize in your response text

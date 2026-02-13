@@ -17,7 +17,8 @@ import { DoctorAvatar } from '../avatar/DoctorAvatar'
 export function NotificationBubble({ 
   text, 
   subText = null, 
-  style = {} 
+  style = {},
+  showArrowAnimation = false  // 新增：是否显示箭头动画
 }) {
   
   return (
@@ -41,8 +42,37 @@ export function NotificationBubble({
       // 装饰
       borderLeft: '6px solid #E6EFEA', 
       
+      // 相对定位，为箭头动画提供参考
+      position: 'relative',
+      overflow: 'visible',
+      
       ...style 
     }}>
+      
+      {/* 🎯 箭头动画 - 任务步骤转换指示器（在bubble内部） */}
+      {showArrowAnimation && (
+        <div style={{
+          position: 'absolute',
+          right: '32px', // 在bubble内部右侧，距离边缘32px
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '40px',
+          height: '40px',
+          animation: 'arrowMoveRightInside 1.5s ease-in-out forwards',
+          opacity: 0,
+          zIndex: 10
+        }}>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path 
+              d="M10 20H30M30 20L22 12M30 20L22 28" 
+              stroke="#4A4A4A" 
+              strokeWidth="3" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      )}
       
       {/* 👤 1. 头像容器 */}
       <div style={{
@@ -94,6 +124,47 @@ export function NotificationBubble({
           </div>
         )}
       </div>
+
+      {/* CSS动画定义 */}
+      <style>{`
+        @keyframes arrowMoveRightInside {
+          0% {
+            opacity: 0;
+            transform: translateY(-50%) translateX(0px);
+          }
+          20% {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0px);
+          }
+          80% {
+            opacity: 1;
+            transform: translateY(-50%) translateX(40px);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(-50%) translateX(40px);
+          }
+        }
+        
+        @keyframes arrowMoveRight {
+          0% {
+            opacity: 0;
+            transform: translateY(-50%) translateX(-20px);
+          }
+          20% {
+            opacity: 1;
+            transform: translateY(-50%) translateX(-20px);
+          }
+          80% {
+            opacity: 1;
+            transform: translateY(-50%) translateX(20px);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(-50%) translateX(20px);
+          }
+        }
+      `}</style>
 
     </div>
   )
