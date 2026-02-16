@@ -10,6 +10,9 @@ import { useAgentSystem } from '../components/game/agent/AgentSystem'
 import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
 
+// 导入GameCube组件
+import { WholeCube } from '../components/game/mechanics/GameCube'
+
 // ==========================================
 // 🧠 Dashboard (保持不变)
 // ==========================================
@@ -36,16 +39,114 @@ const AgentBrainDashboard = ({ observation, action, isThinking }) => {
   )
 }
 
+// ==========================================
+// 🎯 Hold框组件 - 显示当前手持物品
+// ==========================================
+const HoldBox = ({ holdingItem, cubes }) => {
+  if (!holdingItem) {
+    return (
+      <div className="bg-gray-800/80 border-2 border-dashed border-gray-600 rounded-lg p-4 flex flex-col items-center justify-center">
+        <div className="text-gray-400 text-sm mb-2">手持物品</div>
+        <div className="text-gray-500 text-xs">空手</div>
+      </div>
+    )
+  }
+
+  const cube = cubes.find(c => c.id === holdingItem)
+  if (!cube) {
+    return (
+      <div className="bg-gray-800/80 border-2 border-gray-500 rounded-lg p-4 flex flex-col items-center justify-center">
+        <div className="text-gray-300 text-sm mb-2">手持物品</div>
+        <div className="text-gray-400 text-xs">{holdingItem}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-gray-800/80 border-2 border-gray-500 rounded-lg p-4 flex flex-col items-center justify-center">
+      <div className="text-gray-300 text-sm mb-2">手持物品</div>
+      <div className="flex items-center gap-3">
+        <div 
+          className="w-6 h-6 rounded-sm"
+          style={{ backgroundColor: cube.color }}
+        />
+        <div className="text-white font-mono text-sm">{cube.name}</div>
+      </div>
+      <div className="text-gray-400 text-xs mt-2">状态: {cube.state}</div>
+    </div>
+  )
+}
+
+// ==========================================
+// 🎯 手持物品状态管理器
+// ==========================================
+const useHoldingItemManager = (cubes, setCubes) => {
+  // 获取当前手持的方块
+  const holdingCube = cubes.find(cube => cube.state === "in_hand")
+  
+  // 手动拾取方块（用户点击）
+  const pickUpCube = (cubeId) => {
+    setCubes(prevCubes => 
+      prevCubes.map(cube => {
+        if (cube.id === cubeId && cube.state === "on_table") {
+          console.log(`🖱️ 手动拾取: ${cube.name}`)
+          return { ...cube, state: "in_hand", position: [0, -10, 0] }
+        }
+        return cube
+      })
+    )
+  }
+  
+  // 手动放置方块（用户放置）
+  const placeCube = (cubeId, position, newState = "on_table") => {
+    setCubes(prevCubes => 
+      prevCubes.map(cube => {
+        if (cube.id === cubeId && cube.state === "in_hand") {
+          console.log(`🖱️ 手动放置: ${cube.name} -> ${newState}`)
+          return { ...cube, state: newState, position }
+        }
+        return cube
+      })
+    )
+  }
+  
+  // 检查是否正在手持某个方块
+  const isHolding = (cubeId) => {
+    return holdingCube?.id === cubeId
+  }
+  
+  return {
+    holdingCube,
+    pickUpCube,
+    placeCube,
+    isHolding
+  }
+}
+
 export function AgentPlayground({ onBack }) {
   // === 🌍 World State ===
   const [fridgeOpen, setFridgeOpen] = useState(false)
-  const [cubePos, setCubePos] = useState([-0.4, 1.7 + 0.125, -0.5])
-  const [cubeState, setCubeState] = useState("on_table")
+  
+  // === 🧊 多颜色方块系统 ===
+  const [cubes, setCubes] = useState([
+    { 
+      id: "red_cube", 
+      name: "红方块", 
+      color: "#ff6b6b", 
+      position: [-0.4, 1.7 + 0.125, -0.5], 
+      state: "on_table",
+      dragHeight: 1.7 + 0.125
+    }
+  ])
   
   // === 🗣️ Agent步骤说明 ===
   const [agentStep, setAgentStep] = useState("等待Agent指令...")
   const [showArrowAnimation, setShowArrowAnimation] = useState(false)
   const [currentTaskStep, setCurrentTaskStep] = useState(0)
+  
+  // 使用手持物品管理器
+  const holdingManager = useHoldingItemManager(cubes, setCubes)
+  const holdingCube = holdingManager.holdingCube
 
   // === 🤖 使用AgentSystem ===
   const agentSystem = useAgentSystem({
@@ -79,11 +180,15 @@ export function AgentPlayground({ onBack }) {
     getWorldState: (agentState) => {
       const nearby_objects = []
 
-      // 1. Red Cube
-      nearby_objects.push({
-        id: "red_cube",
-        state: cubeState,
-        relation: cubeState === "in_hand" ? "held by agent" : "on the table"
+      // 添加所有方块
+      cubes.forEach(cube => {
+        nearby_objects.push({
+          id: cube.id,
+          name: cube.name,
+          state: cube.state,
+          relation: cube.state === "in_hand" ? "held by agent" : "on the table",
+          color: cube.color
+        })
       })
 
       // 2. Fridge Door
@@ -119,23 +224,48 @@ export function AgentPlayground({ onBack }) {
       
       switch (interactionType) {
         case "PICK":
-          if (targetItem === "red_cube" && cubeState === "on_table") {
-            setCubeState("in_hand")
-            setCubePos([0, -10, 0])
-            console.log("✅ Picked up red cube")
-          }
+          // 拾取方块
+          setCubes(prevCubes => 
+            prevCubes.map(cube => {
+              if (cube.id === targetItem && cube.state === "on_table") {
+                console.log(`✅ Picked up ${cube.name}`)
+                return { ...cube, state: "in_hand", position: [0, -10, 0] }
+              }
+              return cube
+            })
+          )
           break
           
         case "PLACE":
-          if (targetItem === "fridge_main" && cubeState === "in_hand") {
-            setCubeState("in_fridge")
-            setCubePos([-1.8, 1.2, -0.5])
-            console.log("✅ Placed cube in fridge")
-          } else if (targetItem === "table_surface" && cubeState === "in_hand") {
-            setCubeState("on_table")
-            setCubePos([-0.4, 1.7 + 0.125, -0.5])
-            console.log("✅ Placed cube on table")
-          }
+          // 放置方块
+          setCubes(prevCubes => 
+            prevCubes.map(cube => {
+              if (cube.id === targetItem && cube.state === "in_hand") {
+                if (actionPayload.target_location === "fridge_main") {
+                  console.log(`✅ Placed ${cube.name} in fridge`)
+                  return { ...cube, state: "in_fridge", position: [-1.8, 1.2, -0.5] }
+                } else if (actionPayload.target_location === "table_surface") {
+                  console.log(`✅ Placed ${cube.name} on table`)
+                  // 找到空闲的桌子位置
+                  const tablePositions = [
+                    [-0.8, 1.7 + 0.125, -0.5],
+                    [-0.4, 1.7 + 0.125, -0.5],
+                    [0, 1.7 + 0.125, -0.5],
+                    [0.4, 1.7 + 0.125, -0.5]
+                  ]
+                  const occupiedPositions = prevCubes
+                    .filter(c => c.state === "on_table" && c.id !== cube.id)
+                    .map(c => c.position.toString())
+                  const freePosition = tablePositions.find(pos => 
+                    !occupiedPositions.includes(pos.toString())
+                  ) || tablePositions[0]
+                  
+                  return { ...cube, state: "on_table", position: freePosition }
+                }
+              }
+              return cube
+            })
+          )
           break
           
         case "OPEN":
@@ -321,15 +451,62 @@ export function AgentPlayground({ onBack }) {
           </mesh>
         </group>
         
-        {/* 红方块 */}
-        <mesh position={cubePos}>
-          <boxGeometry args={[0.25, 0.25, 0.25]} />
-          <meshStandardMaterial color="#ff6b6b" />
-        </mesh>
+        {/* 多颜色方块 - 使用GameCube组件 */}
+        {cubes.map(cube => {
+          if (cube.state === "in_hand") {
+            // 手持状态不渲染在场景中
+            return null
+          }
+          
+          return (
+            <WholeCube
+              key={cube.id}
+              position={cube.position}
+              dragHeight={cube.dragHeight}
+              onDrag={(newPos) => {
+                // 手动拖动更新位置
+                setCubes(prev => prev.map(c => 
+                  c.id === cube.id ? { ...c, position: newPos } : c
+                ))
+              }}
+              onPickUp={() => {
+                // 用户手动拾取方块
+                holdingManager.pickUpCube(cube.id)
+              }}
+              onPlace={() => {
+                // 用户手动放置方块
+                // 获取当前位置
+                const currentPos = cube.position
+                // 检查是否在冰箱区域
+                const inFridgeZone = 
+                  Math.abs(currentPos[0] - (-3)) < 0.5 && 
+                  Math.abs(currentPos[2] - (-0.5)) < 0.5
+                
+                if (inFridgeZone) {
+                  // 放置到冰箱
+                  holdingManager.placeCube(cube.id, [-1.8, 1.2, -0.5], "in_fridge")
+                } else {
+                  // 放置到桌子
+                  holdingManager.placeCube(cube.id, currentPos, "on_table")
+                }
+              }}
+              slicingZonePos={[-3, 0, -0.5]} // 冰箱位置
+              slicingZoneSize={[1, 1]} // 冰箱大小
+            />
+          )
+        })}
         
         {/* 网格 */}
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
+      
+      {/* Hold框 - 显示当前手持物品（放在状态显示下方） */}
+      <div className="absolute top-32 left-4 z-50 w-48">
+        <HoldBox 
+          holdingItem={holdingCube?.id}
+          cubes={cubes}
+        />
+      </div>
       
       {/* DoctorAvatar - 作为2D UI元素放在Canvas外部 */}
       <div 

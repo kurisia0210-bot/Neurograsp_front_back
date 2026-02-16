@@ -8,7 +8,15 @@ const HALF_WIDTH = CUBE_SIZE / 2
 const CUT_FACE_THICKNESS = 0.001 // 切面贴图的厚度
 
 // 📦 组件 1: 完整的方块
-export function WholeCube({ position, onDrag, slicingZonePos, slicingZoneSize, dragHeight = 0 }) {
+export function WholeCube({ 
+  position, 
+  onDrag, 
+  slicingZonePos, 
+  slicingZoneSize, 
+  dragHeight = 0,
+  onPickUp = () => {},    // 新增：拾取回调
+  onPlace = () => {}      // 新增：放置回调
+}) {
   const meshRef = useRef()
   const [isDragging, setIsDragging] = useState(false)
   
@@ -32,10 +40,8 @@ export function WholeCube({ position, onDrag, slicingZonePos, slicingZoneSize, d
       state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
       
       if (targetPoint) {
-        // 更新位置
-        meshRef.current.position.x = targetPoint.x
-        meshRef.current.position.y = dragHeight // 🔒 锁死高度
-        meshRef.current.position.z = targetPoint.z
+        // 更新位置 - 使用set方法而不是直接赋值
+        meshRef.current.position.set(targetPoint.x, dragHeight, targetPoint.z)
         
         // 逻辑判断
         const newPos = [targetPoint.x, dragHeight, targetPoint.z]
@@ -54,11 +60,26 @@ export function WholeCube({ position, onDrag, slicingZonePos, slicingZoneSize, d
     }
   })
 
+  // 处理点击事件
+  const handleClick = (e) => {
+    e.stopPropagation()
+    
+    if (!isDragging) {
+      // 开始拖动 - 拾取方块
+      setIsDragging(true)
+      onPickUp() // 触发拾取回调
+    } else {
+      // 结束拖动 - 放置方块
+      setIsDragging(false)
+      onPlace() // 触发放置回调
+    }
+  }
+
   return (
     <mesh
       ref={meshRef}
       position={position}
-      onClick={(e) => { e.stopPropagation(); setIsDragging(!isDragging) }}
+      onClick={handleClick}
       onPointerOver={() => (document.body.style.cursor = 'grab')}
       onPointerOut={() => (document.body.style.cursor = 'auto')}
     >
@@ -89,9 +110,8 @@ export function HalfCube({ initialPos, targetPos, onPlaced, rotation, type, drag
       state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
       
       if (targetPoint) {
-        meshRef.current.position.x = targetPoint.x
-        meshRef.current.position.z = targetPoint.z
-        meshRef.current.position.y = dragHeight
+        // 使用set方法而不是直接赋值
+        meshRef.current.position.set(targetPoint.x, dragHeight, targetPoint.z)
 
         const dist = Math.sqrt(
           Math.pow(targetPoint.x - targetPos[0], 2) + 

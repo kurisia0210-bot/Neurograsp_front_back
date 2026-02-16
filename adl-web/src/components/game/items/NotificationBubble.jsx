@@ -49,28 +49,37 @@ export function NotificationBubble({
       ...style 
     }}>
       
-      {/* 🎯 箭头动画 - 任务步骤转换指示器（在bubble内部） */}
+      {/* 🎯 箭头动画 - 移动整个bubble的指示器 */}
       {showArrowAnimation && (
         <div style={{
           position: 'absolute',
-          right: '32px', // 在bubble内部右侧，距离边缘32px
-          top: '50%',
-          transform: 'translateY(-50%)',
-          width: '40px',
-          height: '40px',
-          animation: 'arrowMoveRightInside 1.5s ease-in-out forwards',
-          opacity: 0,
-          zIndex: 10
+          left: '0',
+          top: '0',
+          width: '100%',
+          height: '100%',
+          animation: 'bubbleMoveRight 1.5s ease-in-out forwards',
+          zIndex: 5
         }}>
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path 
-              d="M10 20H30M30 20L22 12M30 20L22 28" 
-              stroke="#4A4A4A" 
-              strokeWidth="3" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            />
-          </svg>
+          {/* 箭头图标放在右侧 */}
+          <div style={{
+            position: 'absolute',
+            right: '-60px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '40px',
+            height: '40px',
+            opacity: 0.8
+          }}>
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path 
+                d="M10 20H30M30 20L22 12M30 20L22 28" 
+                stroke="#4A4A4A" 
+                strokeWidth="3" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         </div>
       )}
       
@@ -127,6 +136,25 @@ export function NotificationBubble({
 
       {/* CSS动画定义 */}
       <style>{`
+        @keyframes bubbleMoveRight {
+          0% {
+            transform: translateX(0px);
+            opacity: 0;
+          }
+          20% {
+            transform: translateX(0px);
+            opacity: 1;
+          }
+          80% {
+            transform: translateX(60px);
+            opacity: 1;
+          }
+          100% {
+            transform: translateX(60px);
+            opacity: 0;
+          }
+        }
+        
         @keyframes arrowMoveRightInside {
           0% {
             opacity: 0;
