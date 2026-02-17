@@ -14,7 +14,9 @@ class MemoryRecord(BaseModel):
     
     # 2. 结构化元数据 (Metadata)
     # 用于过滤 (Where success=False)
+    session_id: str
     episode_id: int
+    step_id: int
     timestamp: float
     action_type: str
     target: str
@@ -32,6 +34,8 @@ class MemoryRecord(BaseModel):
             "documents": [self.embedding_text],
             "metadatas": [{
                 "episode_id": self.episode_id,
+                "step_id": self.step_id,
+                "session_id": self.session_id,
                 "timestamp": self.timestamp,
                 "action_type": self.action_type,
                 "target": self.target,
@@ -39,7 +43,7 @@ class MemoryRecord(BaseModel):
                 "failure_reason": self.failure_reason,
                 "raw_json": self.raw_observation_json # 👈 这里
             }],
-            "ids": [f"ep_{self.episode_id}"]
+            "ids": [f"sess_{self.session_id}_ep_{self.episode_id}_step_{self.step_id}"]
         }
 
 class MemorySearchResult(BaseModel):

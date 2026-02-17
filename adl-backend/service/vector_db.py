@@ -17,10 +17,10 @@ try:
     import chromadb
     import uuid
     CHROMADB_AVAILABLE = True
-    print("🧠 [VectorDB] ChromaDB可用，使用持久化存储")
+    print("[VectorDB] ChromaDB available, using persistent storage")
 except ImportError:
     CHROMADB_AVAILABLE = False
-    print("⚠️ [VectorDB] ChromaDB不可用，使用内存mock模式")
+    print("[VectorDB] ChromaDB not available, using in-memory mock mode")
     import uuid  # 在mock模式下也需要uuid
     
     # 创建简单的mock类
@@ -44,14 +44,14 @@ class VectorDBService:
         初始化 ChromaDB 客户端 (Persistent 模式)
         数据将保存在本地文件夹，无需 Docker，无需显卡。
         """
-        print(f"🧠 [VectorDB] Initializing memory at {db_path}...")
+        print(f"[VectorDB] Initializing memory at {db_path}...")
         
         if not CHROMADB_AVAILABLE:
             # Mock模式
             self.client = None
             self.episodes_collection = MockCollection()
             self.semantics_collection = MockCollection()
-            print("🧠 [VectorDB] Mock模式已启用")
+            print("[VectorDB] Mock mode enabled")
             return
             
         self.client = chromadb.PersistentClient(path=db_path)
@@ -71,7 +71,7 @@ class VectorDBService:
             name="neuro_semantics",
             metadata={"hnsw:space": "cosine"}
         )
-        print(f"🧠 [VectorDB] Memory loaded. Episodes: {self.episodes_collection.count()}, Semantics: {self.semantics_collection.count()}")
+        print(f"[VectorDB] Memory loaded. Episodes: {self.episodes_collection.count()}, Semantics: {self.semantics_collection.count()}")
 
     # ==========================================
     # 🌊 Episodic Memory (流水账)
@@ -93,7 +93,9 @@ class VectorDBService:
         # 1. 构建强类型记录
         record = MemoryRecord(
             embedding_text=self._serialize_observation(pre_obs),
+            session_id=pre_obs.session_id,
             episode_id=episode_id,
+            step_id=pre_obs.step_id,
             timestamp=pre_obs.timestamp,
             action_type=action.type, # Pydantic 会自动处理 Enum
             target=action.target_item or "None",
@@ -149,7 +151,7 @@ class VectorDBService:
             metadatas=[{"source": source}],
             ids=[f"rule_{uuid.uuid4().hex[:8]}"]
         )
-        print(f"📘 [VectorDB] Learned new rule: {rule_content}")
+        print(f"[VectorDB] Learned new rule: {rule_content}")
 
     def query_relevant_rules(self, query_context: str, top_k: int = 2) -> List[str]:
         """

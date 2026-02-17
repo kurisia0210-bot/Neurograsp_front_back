@@ -112,6 +112,15 @@ class ReasoningEngine:
     推理引擎：负责接收观察、调用 LLM、检索记忆、并通过 Watchdog 监控行为异常。
     """
     
+    def _make_action(self, obs: ObservationPayload, **kwargs) -> ActionPayload:
+        """辅助方法：自动注入 session_id 和 step_id"""
+        return ActionPayload(
+            session_id=obs.session_id,
+            episode_id=obs.episode_id,
+            step_id=obs.step_id,
+            **kwargs
+        )
+    
     # System Prompt (Game 1: Kitchen)
     SYSTEM_PROMPT = """
 You are COALA, an embodied intelligent agent helper.
@@ -206,7 +215,7 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
         cube = next((obj for obj in obs.nearby_objects if obj.id == "red_cube"), None)
         if cube and cube.state == "in_fridge":
             print("🏆 [Reasoning]: Victory condition met.")
-            return ActionPayload(
+            return self._make_action(obs,
                 type="FINISH", 
                 content="I have successfully placed the red cube in the fridge."
             )
@@ -215,7 +224,7 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
         prompt_messages = await self._construct_game1_prompt(obs)
         
         # 3. 调用 LLM 并解析
-        action_payload = await self._call_llm_and_parse(prompt_messages)
+        action_payload = await self._call_llm_and_parse(obs, prompt_messages)
         
         # ==========================================
         # 🛡️ 看门狗介入 (WATCHDOG CHECK)
@@ -223,7 +232,7 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
         # ✅ 新代码: 传入 action_payload 和 obs
         if self.watchdog.inspect(action_payload, obs):
             print("🛑 L2 STAGNATION DETECTED. OVERRIDING ACTION.")
-            return ActionPayload(
+            return self._make_action(obs,
                 type="THINK",
                 content="[SYSTEM ERROR]: Cognitive Stagnation Detected. You are repeating actions or idling without progress. STOP and choose a DIFFERENT strategy."
             )
@@ -267,20 +276,20 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
                 message = raw_msg.strip().replace('"', '') if raw_msg else "Let's try an easier level. You can do this!"
                 
                 print(f"⚡ [Short Circuit] Lowering difficulty: {current_len} -> {new_len}")
-                return ActionPayload(
+                return self._make_action(obs,
                     type=AgentActionType.ADJUST_DIFFICULTY,
                     target_length=new_len,
                     content=message
                 )
             else:
                 # 已经是最低难度
-                return ActionPayload(
+                return self._make_action(obs,
                     type=AgentActionType.THINK,
                     content="Don't give up! We are learning together. Take your time."
                 )
         
         # 3. 未触发规则，保持安静
-        return ActionPayload(
+        return self._make_action(obs,
             type=AgentActionType.THINK, 
             content="Monitoring user progress..."
         )
@@ -308,7 +317,10 @@ The following are critical rules learned from past experience. You MUST follow t
             print(f"📘 [M9] No semantic rules found for context.")
         
         # [M8] 检索上次失败
-        last_fail_ep = episodic_memory.get_last_failure()
+        last_fail_ep = episodic_memory.get_last_failure(
+            session_id=obs.session_id,
+            episode_id=obs.episode_id
+        )
         failure_context = ""
         
         if last_fail_ep:
@@ -366,22 +378,26 @@ The following are critical rules learned from past experience. You MUST follow t
             {"role": "user", "content": user_msg}
         ]
     
-    async def _call_llm_and_parse(self, messages: list) -> ActionPayload:
+    async def _call_llm_and_parse(self, obs: ObservationPayload, messages: list) -> ActionPayload:
         """
         调用 LLM 并解析 JSON 响应
         """
         raw_content = await get_completion(messages)
         
         if not raw_content:
-            return SystemResponses.SILENCE
+            return self._make_action(obs, type="IDLE", content="...")
         
         try:
             clean_content = re.sub(r"```json|```", "", raw_content).strip()
             data = json.loads(clean_content)
+            # 注入 trace keys
+            data['session_id'] = obs.session_id
+            data['episode_id'] = obs.episode_id
+            data['step_id'] = obs.step_id
             return ActionPayload(**data)
         except Exception as e:
             print(f"❌ Reasoning Error: {e}")
-            return ActionPayload(type="THINK", content=f"Schema Error: {str(e)[:100]}")
+            return self._make_action(obs, type="THINK", content=f"Schema Error: {str(e)[:100]}")
 
 
 # ==========================================
