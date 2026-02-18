@@ -18,6 +18,14 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
     # Resolve hierarchy key: session -> episode -> step
     obs.episode_id = episodic_memory.resolve_episode_id(obs)
 
+    # Debug trace: frontend-fed last action content
+    if obs.last_action is not None:
+        print(
+            "[Tick Input] "
+            f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
+            f"last_action.content={obs.last_action.content!r}"
+        )
+
     # 1) Commit previous staged action with current observation as post-state
     episodic_memory.commit(obs)
 

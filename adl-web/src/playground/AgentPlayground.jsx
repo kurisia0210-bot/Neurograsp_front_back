@@ -143,6 +143,7 @@ export function AgentPlayground({ onBack }) {
   const [agentStep, setAgentStep] = useState("等待Agent指令...")
   const [showArrowAnimation, setShowArrowAnimation] = useState(false)
   const [currentTaskStep, setCurrentTaskStep] = useState(0)
+  const [intentHistory, setIntentHistory] = useState([])
   
   // 使用手持物品管理器
   const holdingManager = useHoldingItemManager(cubes, setCubes)
@@ -155,6 +156,30 @@ export function AgentPlayground({ onBack }) {
     // 添加onTickComplete回调来获取Agent的推理
     onTickComplete: (response, observation) => {
       console.log("🔄 Tick completed")
+
+      if (response?.intent) {
+        const {
+          type = null,
+          target_poi = null,
+          target_item = null,
+          interaction_type = "NONE",
+          target_length = null,
+          content = ""
+        } = response.intent
+
+        const historyEntry = {
+          key: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          step_id: response?.step_id ?? response?.intent?.step_id ?? null,
+          type,
+          target_poi,
+          target_item,
+          interaction_type,
+          target_length,
+          content
+        }
+
+        setIntentHistory(prev => [...prev, historyEntry].slice(-30))
+      }
       
       // 提取Agent的推理内容
       if (response?.intent?.content) {
@@ -332,6 +357,11 @@ export function AgentPlayground({ onBack }) {
 
   // === 🎨 渲染部分 ===
   const TABLE_HEIGHT = 0.85
+
+  const handleResetAgent = () => {
+    agentSystem.resetAgent()
+    setIntentHistory([])
+  }
   
   // 计算Agent位置（用于可视化）
   const getAgentVisualPosition = () => {
@@ -402,7 +432,7 @@ export function AgentPlayground({ onBack }) {
             {agentSystem.autoLoop ? "STOP" : "AUTO"}
           </button>
           <button 
-            onClick={agentSystem.resetAgent}
+            onClick={handleResetAgent}
             className="px-6 py-2 bg-gray-600 text-white font-bold rounded shadow-lg hover:bg-gray-700 transition-colors"
           >
             RESET
@@ -541,6 +571,46 @@ export function AgentPlayground({ onBack }) {
             <div className="mt-2 text-yellow-300">
               最后动作: {agentSystem.lastAction.type}
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* 左下角 History：记录每次 intent 的关键字段 */}
+      <div className="absolute bottom-4 left-4 z-50 w-[28rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-green-300">History ({intentHistory.length})</div>
+          <button
+            onClick={() => setIntentHistory([])}
+            className="px-2 py-0.5 text-[10px] bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="overflow-y-auto max-h-52 space-y-2">
+          {intentHistory.length === 0 ? (
+            <div className="text-gray-500">No history yet.</div>
+          ) : (
+            intentHistory.map((entry, idx) => (
+              <div key={entry.key} className="bg-gray-900/80 border border-gray-700 rounded p-2">
+                <div className="text-[10px] text-gray-400 mb-1">
+                  #{idx + 1} step={entry.step_id ?? "-"}
+                </div>
+                <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
+{JSON.stringify(
+  {
+    type: entry.type,
+    target_poi: entry.target_poi,
+    target_item: entry.target_item,
+    interaction_type: entry.interaction_type,
+    target_length: entry.target_length,
+    content: entry.content
+  },
+  null,
+  2
+)}
+                </pre>
+              </div>
+            ))
           )}
         </div>
       </div>

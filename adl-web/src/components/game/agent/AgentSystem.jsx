@@ -1,151 +1,123 @@
-// AgentSystem.jsx - 可复用的Agent系统封装
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 /**
- * AgentSystem - 可复用的Agent核心系统
- * 
- * 这个组件封装了Agent的所有核心逻辑：
- * 1. 状态管理（位置、手持物品）
- * 2. 感知系统（perceiveWorld）
- * 3. 执行系统（executeAction）
- * 4. Tick循环（与后端通信）
- * 5. 自动循环控制
- * 
- * @param {Object} props
- * @param {Function} props.onActionExecuted - 动作执行后的回调
- * @param {Function} props.onTickComplete - Tick完成后的回调
- * @param {Function} props.getWorldState - 获取世界状态的函数
- * @param {Function} props.executeWorldAction - 执行世界动作的函数
- * @param {string} props.initialTask - 初始任务
- * @param {string} props.backendUrl - 后端API地址
+ * AgentSystem - reusable core loop
  */
 export function useAgentSystem({
   onActionExecuted = () => {},
   onTickComplete = () => {},
   getWorldState,
   executeWorldAction,
-  initialTask = "Put red cube in fridge",
+  initialTask = 'Put red cube in fridge',
   backendUrl = 'http://127.0.0.1:8001/api/tick'
 }) {
-  // === 🧠 Agent 核心状态 ===
   const [agentState, setAgentState] = useState({
-    location: "table_center",
+    location: 'table_center',
     holding: null
   })
-  
+
+  // P0-1 session/step tracking
+  const sessionIdRef = useRef(crypto.randomUUID())
+  const episodeIdRef = useRef(null)
+  const stepCounterRef = useRef(0)
+
   const [isThinking, setIsThinking] = useState(false)
   const [autoLoop, setAutoLoop] = useState(false)
   const [lastAction, setLastAction] = useState(null)
+  const [lastResult, setLastResult] = useState(null)
   const [lastObservation, setLastObservation] = useState(null)
   const [lastResponse, setLastResponse] = useState(null)
   const [userInstruction, setUserInstruction] = useState(initialTask)
 
-  // ✅ 使用 useRef 存储最新状态，避免闭包陷阱
   const agentStateRef = useRef(agentState)
-  
-  // 每次 agentState 更新时，同步更新 ref
+
   useEffect(() => {
     agentStateRef.current = agentState
   }, [agentState])
 
-  // === 👁️ 感知系统 ===
   const perceiveWorld = useCallback((customState = null) => {
-    // 使用传入的状态或当前状态
     const state = customState || agentStateRef.current
-    
-    // 调用外部函数获取世界状态
-    const worldState = getWorldState ? getWorldState(state) : {
-      nearby_objects: [],
-      timestamp: Date.now() / 1000
-    }
+
+    // P0-1 increment step per request
+    stepCounterRef.current += 1
+
+    const worldState = getWorldState
+      ? getWorldState(state)
+      : {
+          nearby_objects: [],
+          timestamp: Date.now() / 1000
+        }
 
     return {
+      session_id: sessionIdRef.current,
+      episode_id: episodeIdRef.current,
+      step_id: stepCounterRef.current,
       timestamp: Date.now() / 1000,
       agent: {
         location: state.location,
-        holding: state.holding,
+        holding: state.holding
       },
       nearby_objects: worldState.nearby_objects || [],
-      global_task: userInstruction
+      global_task: userInstruction,
+      // P0-2 feed previous action/result back to backend
+      last_action: lastAction,
+      last_result: lastResult
     }
-  }, [getWorldState, userInstruction])
+  }, [getWorldState, userInstruction, lastAction, lastResult])
 
-  // === 💪 执行系统 ===
   const executeAction = useCallback((actionPayload) => {
-    console.log("🤖 [AgentSystem] Executing:", actionPayload)
-    
-    // ✅ 从 ref 获取最新状态，避免闭包陷阱
-    let newAgentState = { ...agentStateRef.current }
+    console.log('[AgentSystem] Executing:', actionPayload)
 
-    // 处理不同类型的动作
+    const newAgentState = { ...agentStateRef.current }
+
     switch (actionPayload.type) {
-      case "MOVE_TO":
+      case 'MOVE_TO':
         if (actionPayload.target_poi) {
           newAgentState.location = actionPayload.target_poi
-          console.log(`✅ Agent moved to: ${actionPayload.target_poi}`)
         }
         break
-        
-      case "INTERACT":
-        const interactionType = actionPayload.interaction_type || "NONE"
+
+      case 'INTERACT': {
+        const interactionType = actionPayload.interaction_type || 'NONE'
         const targetItem = actionPayload.target_item
-        
-        // 调用外部函数执行世界动作
+
         if (executeWorldAction) {
           executeWorldAction(actionPayload, newAgentState)
         }
-        
-        // 更新手持状态（基于交互类型）
+
         if (interactionType === 'PICK' && targetItem) {
           newAgentState.holding = targetItem
-          console.log(`✅ Agent picked up: ${targetItem}`)
         } else if (interactionType === 'PLACE') {
           newAgentState.holding = null
-          console.log(`✅ Agent placed item`)
         }
         break
-        
-      case "THINK":
-        console.log("💭 Agent:", actionPayload.content)
+      }
+
+      case 'THINK':
+      case 'SPEAK':
+      case 'IDLE':
+      case 'FINISH':
         break
-        
-      case "SPEAK":
-        console.log("💬 Agent:", actionPayload.content)
-        break
-        
-      case "IDLE":
-        console.log("⏸️ Agent: Idling...")
-        break
-        
-      case "FINISH":
-        console.log("✅ Agent:", actionPayload.content)
-        break
-        
+
       default:
-        console.log("⚠️ Unknown action:", actionPayload.type)
+        console.warn('Unknown action type:', actionPayload.type)
     }
-    
-    // 更新状态
+
     agentStateRef.current = newAgentState
     setAgentState(newAgentState)
-    
-    // 回调通知
     onActionExecuted(actionPayload, newAgentState)
-    
+
     return newAgentState
   }, [executeWorldAction, onActionExecuted])
 
-  // === 🔄 Tick 循环 ===
   const tick = useCallback(async () => {
     if (isThinking) return
     setIsThinking(true)
 
     try {
-      // 1. 感知世界
       const obs = perceiveWorld()
       setLastObservation(obs)
 
-      // 2. 发送请求到后端
       const response = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,101 +125,117 @@ export function useAgentSystem({
       })
 
       if (!response.ok) throw new Error(`Backend error: ${response.status}`)
-      
-      // 3. 解析响应
+
       const data = await response.json()
       setLastResponse(data)
+      if (typeof data.episode_id === 'number') {
+        episodeIdRef.current = data.episode_id
+      } else if (typeof data.intent?.episode_id === 'number') {
+        episodeIdRef.current = data.intent.episode_id
+      }
       setLastAction(data.intent)
 
-      // 4. 处理反射判决
       const reflex = data.reflex_verdict
-      if (reflex && reflex.verdict === "BLOCK") {
-        console.warn(`🛡️ Reflex Blocked: ${reflex.message}`)
-        // 可以在这里处理被阻止的动作
-      } else {
-        // 5. 执行动作
+      const isBlocked = reflex && reflex.verdict === 'BLOCK'
+      setLastResult(
+        data.execution_result || {
+          success: !isBlocked,
+          failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
+          failure_reason: reflex?.message || ''
+        }
+      )
+
+      if (!isBlocked) {
         executeAction(data.intent)
       }
 
-      // 6. 回调通知
       onTickComplete(data, obs)
-
     } catch (e) {
-      console.error("❌ Tick error:", e)
-      setLastAction({ type: "THINK", content: `Error: ${e.message}` })
+      console.error('Tick error:', e)
+      setLastAction({
+        session_id: sessionIdRef.current,
+        episode_id: episodeIdRef.current,
+        step_id: stepCounterRef.current,
+        type: 'THINK',
+        content: `Error: ${e.message}`
+      })
+      setLastResult({
+        success: false,
+        failure_type: 'REASONING_ERROR',
+        failure_reason: e.message
+      })
     } finally {
       setIsThinking(false)
     }
   }, [isThinking, perceiveWorld, backendUrl, executeAction, onTickComplete])
 
-  // === ⏱️ 自动循环控制 ===
   useEffect(() => {
     if (!autoLoop) return
 
     const interval = setInterval(() => {
       tick()
-    }, 3000) // 每3秒执行一次
+    }, 3000)
 
     return () => clearInterval(interval)
   }, [autoLoop, tick])
 
-  // === 🎮 控制函数 ===
   const startAutoLoop = () => setAutoLoop(true)
   const stopAutoLoop = () => setAutoLoop(false)
-  const toggleAutoLoop = () => setAutoLoop(prev => !prev)
+  const toggleAutoLoop = () => setAutoLoop((prev) => !prev)
 
   const updateTask = (newTask) => {
     setUserInstruction(newTask)
-    console.log(`📝 Task updated: ${newTask}`)
   }
 
   const resetAgent = () => {
     const resetState = {
-      location: "table_center",
+      location: 'table_center',
       holding: null
     }
+
     agentStateRef.current = resetState
     setAgentState(resetState)
     setLastAction(null)
+    setLastResult(null)
     setLastObservation(null)
     setLastResponse(null)
-    console.log("🔄 Agent reset to initial state")
+
+    // P0-1/P0-3: same session, start a new episode locally.
+    // NOTE(super-ahead, skipped): no explicit backend RESET action/event yet.
+    episodeIdRef.current = null
+    stepCounterRef.current = 0
   }
 
-  // === 📊 返回接口 ===
   return {
-    // 状态
     agentState,
     isThinking,
     autoLoop,
     lastAction,
+    lastResult,
     lastObservation,
     lastResponse,
     userInstruction,
-    
-    // 控制函数
+    sessionId: sessionIdRef.current,
+    episodeId: episodeIdRef.current,
+    stepId: stepCounterRef.current,
+
     tick,
     startAutoLoop,
     stopAutoLoop,
     toggleAutoLoop,
     updateTask,
     resetAgent,
-    
-    // 设置函数
+
     setUserInstruction,
-    
-    // 工具函数
+
     perceiveWorld,
     executeAction
   }
 }
 
-/**
- * AgentSystemProvider - 提供AgentSystem上下文
- */
 export function AgentSystemProvider({ children, config }) {
   const agentSystem = useAgentSystem(config)
-  
+
   return (
     <AgentSystemContext.Provider value={agentSystem}>
       {children}
@@ -255,7 +243,6 @@ export function AgentSystemProvider({ children, config }) {
   )
 }
 
-// 创建上下文（可选，用于深层组件共享）
 import { createContext, useContext } from 'react'
 const AgentSystemContext = createContext(null)
 

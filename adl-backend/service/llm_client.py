@@ -12,7 +12,6 @@ API_KEY = os.getenv("DEEPSEEK_API_KEY")
 BASE_URL = "https://api.deepseek.com"
 if not API_KEY:
     raise ValueError("API Key not found! Check your .env file.")
-print(f"Key loaded: {API_KEY[:4]}***") 
 
 # 初始化客户端
 try:

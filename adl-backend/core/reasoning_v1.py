@@ -1,119 +1,42 @@
 import json
 import re
-from collections import deque
 from schema.payload import ObservationPayload, ActionPayload, SystemResponses, AgentActionType
 from service.llm_client import get_completion
 from core.memory import episodic_memory 
 from service.vector_db import vector_db
+from core.watchdog import Watchdog
+from core.prompt_templates import GAME1_SYSTEM_PROMPT
 from typing import Optional
 
 
-class Watchdog:
-    def __init__(self, history_limit=6, move_threshold=4):
-        """
-        :param move_threshold: 允许连续移动/思考的最大次数。
-                               厨房很小，连续移动 4 次通常意味着迷路或瞎逛。
-        """
-        self.history_limit = history_limit
-        self.move_threshold = move_threshold
-        
-        # 1. 基础循环检测 (保留)
-        self.action_window = deque(maxlen=history_limit)
-        self.state_window = deque(maxlen=history_limit)
-        
-        # 2. 🆕 生产力剃刀 (解决无效序列 & 进度倒退)
-        self.non_productive_streak = 0
-        self.last_holding = False # 记忆上一帧的手持状态
-
-    def _get_action_signature(self, action) -> str:
-        t_item = getattr(action, 'target_item', 'None')
-        t_poi = getattr(action, 'target_poi', 'None')
-        return f"{action.type}:{t_item}:{t_poi}"
-
-    def _get_world_hash(self, obs) -> str:
-        if not obs or not obs.agent: return "UNKNOWN"
-        loc = obs.agent.location
-        holding = str(obs.agent.holding)
-        return f"LOC:{loc}|HOLD:{holding}"
-
-    def inspect(self, action, obs) -> bool:
-        """
-        全能审查逻辑
-        ⚠️ 关键：如果动作包含报警消息，立即放行，避免死锁！
-        """
-        
-        # === 🚨 死锁防护：如果是 Watchdog 自己的报警消息，直接放行 ===
-        if action.type == "THINK" and action.content and ("STAGNATION" in action.content or "SYSTEM ERROR" in action.content):
-            return False  # 这是报警消息，不再二次检测
-        
-        # ======================================================
-        # 🛡️ 逻辑 A: 生产力剃刀 (The Productivity Razor)
-        # 解决: 1. 无效动作序列 (乱跑)
-        #       2. 进度倒退 (掉落)
-        # ======================================================
-        
-        current_holding = bool(obs.agent.holding)
-        
-        # [检测进度倒退]: 手里东西没了 (True -> False) 且不是完成任务
-        # 这比乱跑更严重，属于"负生产力"，直接报警
-        if self.last_holding and not current_holding and action.type != "FINISH":
-            print(f"🐕 Watchdog: PROGRESS REGRESSION! Item dropped/lost -> BARK!")
-            # 更新状态，防止连续报错
-            self.last_holding = current_holding 
-            self.non_productive_streak = 0 # 重置计数
-            return True
-
-        # 更新记忆
-        self.last_holding = current_holding
-
-        # [检测无效序列]: 区分生产性动作
-        if action.type in ["PICK", "PLACE", "INTERACT", "FINISH"]:
-            # 🎉 做了有意义的事，计数器归零
-            self.non_productive_streak = 0
-        else:
-            # 💤 只是在走位或发呆 (MOVE_TO, THINK, IDLE)
-            self.non_productive_streak += 1
-            if self.non_productive_streak > self.move_threshold:
-                print(f"🐕 Watchdog: Wandering detected! {self.non_productive_streak} steps without interaction -> BARK!")
-                return True
-
-        # ======================================================
-        # 🛡️ 逻辑 B: 循环与停滞 (原有逻辑，兜底用)
-        # ======================================================
-        
-        # 1. 动作循环 (鬼打墙)
-        act_sig = self._get_action_signature(action)
-        self.action_window.append(act_sig)
-        if len(self.action_window) >= self.history_limit:
-            if len(set(self.action_window)) <= 2:
-                print(f"🐕 Watchdog: Action Loop -> BARK!")
-                return True
-
-        # 2. 状态停滞 (西西弗斯) - 只有非思考动作才检查
-        if action.type not in ["THINK", "IDLE"]:
-            state_hash = self._get_world_hash(obs)
-            self.state_window.append(state_hash)
-            if len(self.state_window) >= self.history_limit:
-                # 统计状态频率
-                counts = {}
-                for s in self.state_window: counts[s] = counts.get(s, 0) + 1
-                for s, c in counts.items():
-                    if c >= 3:
-                        print(f"🐕 Watchdog: State Stagnation ({s} x{c}) -> BARK!")
-                        return True
-
-        return False
 
 # ==========================================
 # ReasoningEngine Class
 # ==========================================
 class ReasoningEngine:
     """
-    推理引擎：负责接收观察、调用 LLM、检索记忆、并通过 Watchdog 监控行为异常。
+    推理引擎核心类，负责处理观察并生成动作建议
+    
+    主要职责：
+    1. 多游戏模式路由（厨房任务 vs 记忆拨号）
+    2. 集成M8（失败学习）和M9（语义规则）到提示工程
+    3. 调用LLM生成动作建议
+    4. 通过Watchdog监控认知停滞
+    
+    设计模式：策略模式 + 模板方法模式
     """
     
     def _make_action(self, obs: ObservationPayload, **kwargs) -> ActionPayload:
-        """辅助方法：自动注入 session_id 和 step_id"""
+        """
+        创建带有追踪键的动作对象
+        
+        Args:
+            obs: 观察对象，包含session/episode/step追踪信息
+            **kwargs: 动作的其他参数
+            
+        Returns:
+            ActionPayload: 包含完整追踪信息的标准动作对象
+        """
         return ActionPayload(
             session_id=obs.session_id,
             episode_id=obs.episode_id,
@@ -122,96 +45,51 @@ class ReasoningEngine:
         )
     
     # System Prompt (Game 1: Kitchen)
-    SYSTEM_PROMPT = """
-You are COALA, an embodied intelligent agent helper.
-Your goal is to help the user with kitchen tasks.
-
-### CRITICAL THINKING RULES
-1. ACTION > NARRATION: Do not describe what you are going to do. JUST DO IT.
-2. PRECONDITION CHECKING: Before performing an action, ensure all preconditions are met.
-3. EXPLICIT INTENT: You must explicitly specify the interaction type (PICK, PLACE, SLICE, etc.).
-4. ADAPTIVE PLANNING: If you receive a [SYSTEM ERROR], switch strategies immediately.
-
-### CAPABILITIES & CONSTRAINTS
-- You can MOVE_TO(target_poi)
-- You can INTERACT(target_item, interaction_type)
-- **Constraint**: `INTERACT` with `interaction_type="NONE"` implies only touching/inspecting. It does NOT pick up items.
-
-### ACTION RULES - INTERACT (CRITICAL)
-The 'INTERACT' action requires a specific `interaction_type` to change the physical world.
-**You MUST use one of the following types:**
-
-1. **PICK**: To pick up an item (e.g., cube, knife).
-   - Correct: `{"type": "INTERACT", "target_item": "red_cube", "interaction_type": "PICK"}`
-   - Precondition: Hands must be empty.
-
-2. **PLACE**: To put down the held item onto a surface or into a container.
-   - Correct: `{"type": "INTERACT", "target_item": "table_surface", "interaction_type": "PLACE"}`
-   - Precondition: Must be holding an item.
-
-3. **SLICE**: To cut an item (Must be on cutting board).
-   - Correct: `{"type": "INTERACT", "target_item": "red_cube", "interaction_type": "SLICE"}`
-
-4. **OPEN / CLOSE / TOGGLE**: For doors, lids, or appliances.
-   - Correct: `{"type": "INTERACT", "target_item": "fridge_door", "interaction_type": "OPEN"}`
-
-**NEVER use "NONE" if you intend to move or change an item.**
-
-### FORMAT INSTRUCTIONS
-1. Output ONLY a valid JSON object.
-2. NO Markdown code blocks.
-3. NO conversational filler.
-
-### JSON SCHEMA
-{
-  "type": "MOVE_TO" | "INTERACT" | "THINK" | "FINISH",
-  "target_poi": "fridge_zone" | "table_center" | "stove_zone" | null,
-  "target_item": "red_cube" | "fridge_main" | "fridge_door" | "stove" | "table_surface" | null,
-  "interaction_type": "PICK" | "PLACE" | "SLICE" | "OPEN" | "CLOSE" | "TOGGLE" | "NONE",
-  "content": "Brief reasoning (Keep it under 10 words)"
-}
-
-### [ANTI-STAGNATION PROTOCOLS]
-
-**RULE 1: NO "HAMLET" LOOPS (Action > Planning)**
-If you know the first step (e.g., Pick up the cube), **DO NOT output a 'THINK' action** to announce it.
-- ❌ BAD: `{"type": "THINK", "content": "I will pick up the red cube now."}`
-- ✅ GOOD: `{"type": "INTERACT", "target_item": "red_cube", "interaction_type": "PICK"}`
-
-**RULE 2: HANDLING MISSING ITEMS**
-If a target container is not visible:
-1. First, `PICK` up the item you need to transport.
-2. Then, `MOVE_TO` different zones to search.
-3. Do NOT freeze in 'THINK' mode.
-
-**RULE 3: EMERGENCY ERROR HANDLING**
-If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wandering":
-1. **STOP** your current plan immediately.
-2. **SWITCH STRATEGY**: If you were moving back and forth, stop. If you were trying to pick something up and failed, move closer first.
-3. **FORCE ACTION**: Output a physical action (`MOVE` or `INTERACT`), not `THINK`.
-"""
+    SYSTEM_PROMPT = GAME1_SYSTEM_PROMPT
 
     def __init__(self):
-        """初始化推理引擎，并创建 Watchdog 实例"""
+        """
+        初始化推理引擎
+        
+        创建Watchdog实例用于监控认知停滞，设置默认参数：
+        - history_limit=6: 历史窗口大小
+        - move_threshold=4: 徘徊检测阈值
+        """
         self.watchdog = Watchdog(history_limit=6, move_threshold=4)
         print("🧠 ReasoningEngine Initialized with Watchdog.")
 
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
         """
-        接收观察 -> (Game 2 短路判断) -> (Game 1 深度推理 + 看门狗审查)
+        主推理方法：处理观察并生成下一个动作建议
+        
+        处理流程：
+        1. 游戏模式路由：检查是否为Game 2（记忆拨号）
+        2. 胜利条件检测：检查红方块是否已在冰箱中
+        3. 提示工程：构建包含M8/M9信息的LLM提示
+        4. LLM调用：获取动作建议
+        5. Watchdog检查：检测认知停滞，必要时覆盖动作
+        
+        Args:
+            obs: 观察对象，包含当前世界状态和追踪信息
+            
+        Returns:
+            ActionPayload: 建议的下一个动作
+            
+        Raises:
+            无显式异常抛出，但内部错误会返回THINK动作包含错误信息
         """
         
         # ==============================================================================
-        # 🎮 [Game 2 Short Circuit] Memory Dialing Logic
+        # [Game 2] Short Circuit: Memory Dialing 快速路径
         # ==============================================================================
         if "Game: Memory Dialing" in obs.global_task:
             return await self._handle_game2(obs)
         
         # ==============================================================================
-        # 🧠 [Game 1 Logic] Deep Reasoning (Kitchen Tasks)
+        # [Game 1] Kitchen 标准推理路径
         # ==============================================================================
         
-        # 1. 胜利检测
+        # 1) 胜利条件检测：检查red_cube是否已在冰箱中
         cube = next((obj for obj in obs.nearby_objects if obj.id == "red_cube"), None)
         if cube and cube.state == "in_fridge":
             print("🏆 [Reasoning]: Victory condition met.")
@@ -220,35 +98,55 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
                 content="I have successfully placed the red cube in the fridge."
             )
         
-        # 2. 构建 Prompt（集成记忆检索）
+        # 2) 提示工程：集成M8（失败学习）和M9（语义规则）
         prompt_messages = await self._construct_game1_prompt(obs)
         
-        # 3. 调用 LLM 并解析
+        # 3) LLM调用：获取动作建议并解析为ActionPayload
         action_payload = await self._call_llm_and_parse(obs, prompt_messages)
         
         # ==========================================
-        # 🛡️ 看门狗介入 (WATCHDOG CHECK)
+        # 4) Watchdog 认知停滞检测与干预
         # ==========================================
-        # ✅ 新代码: 传入 action_payload 和 obs
+        #    如果检测到停滞模式，用系统错误提示覆盖原动作
         if self.watchdog.inspect(action_payload, obs):
-            print("🛑 L2 STAGNATION DETECTED. OVERRIDING ACTION.")
-            return self._make_action(obs,
+            verdict = self.watchdog.get_last_verdict() or {}
+            rule_id = verdict.get("rule_id", "UNKNOWN")
+            reason = verdict.get("reason", "No reason provided")
+            print(f"[Watchdog] L2 STAGNATION DETECTED. rule={rule_id} reason={reason}")
+            print(self.watchdog.explain_last())
+            return self._make_action(
+                obs,
                 type="THINK",
-                content="[SYSTEM ERROR]: Cognitive Stagnation Detected. You are repeating actions or idling without progress. STOP and choose a DIFFERENT strategy."
+                content=(
+                    "[SYSTEM ERROR]: Cognitive Stagnation Detected. "
+                    f"Rule={rule_id}. Reason={reason}. "
+                    "STOP and choose a DIFFERENT strategy."
+                ),
             )
         
         return action_payload
 
     # ==========================================
-    # 辅助方法 (Helper Methods)
+    # ======================== Helper Methods ========================
     # ==========================================
     
     async def _handle_game2(self, obs: ObservationPayload) -> ActionPayload:
         """
-        Game 2: Memory Dialing 的短路逻辑
-        纯 Python 规则引擎 + LLM 情感支持
+        处理Game 2（记忆拨号）的快速路径逻辑
+        
+        实现自适应难度调整：
+        1. 解析当前任务长度和失败次数
+        2. 如果连续失败3次以上，降低难度
+        3. 使用LLM生成鼓励性消息
+        4. 返回调整难度或监控动作
+        
+        Args:
+            obs: 观察对象，包含全局任务描述
+            
+        Returns:
+            ActionPayload: 调整难度动作或监控思考动作
         """
-        # 1. 解析状态
+        # 1) 解析任务参数：当前长度和失败次数
         current_len = 3
         fail_count = 0
         
@@ -260,14 +158,14 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
         if fail_match: 
             fail_count = int(fail_match.group(1))
         
-        # 2. 规则判断
+        # 2) 自适应难度调整逻辑
         if fail_count >= 3:
-            # 触发降级机制
+            # 降低难度：如果当前长度大于最小值
             if current_len > 3:
                 new_len = current_len - 1
                 intent = f"User failed {fail_count} times. I am lowering difficulty to {new_len}. Write a very short encouraging message (max 15 words)."
                 
-                # 调用 LLM 生成鼓励台词
+                # 调用LLM生成鼓励性消息
                 empathy_msgs = [
                     {"role": "system", "content": "You are a warm rehab coach. Output ONLY the message string."},
                     {"role": "user", "content": intent}
@@ -275,20 +173,20 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
                 raw_msg = await get_completion(empathy_msgs)
                 message = raw_msg.strip().replace('"', '') if raw_msg else "Let's try an easier level. You can do this!"
                 
-                print(f"⚡ [Short Circuit] Lowering difficulty: {current_len} -> {new_len}")
+                print(f"📉 [Short Circuit] Lowering difficulty: {current_len} -> {new_len}")
                 return self._make_action(obs,
                     type=AgentActionType.ADJUST_DIFFICULTY,
                     target_length=new_len,
                     content=message
                 )
             else:
-                # 已经是最低难度
+                # 已经是最低难度，返回鼓励消息
                 return self._make_action(obs,
                     type=AgentActionType.THINK,
                     content="Don't give up! We are learning together. Take your time."
                 )
         
-        # 3. 未触发规则，保持安静
+        # 3) 正常监控状态
         return self._make_action(obs,
             type=AgentActionType.THINK, 
             content="Monitoring user progress..."
@@ -296,9 +194,19 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
     
     async def _construct_game1_prompt(self, obs: ObservationPayload) -> list:
         """
-        构建 Game 1 的 LLM Prompt，集成 M8/M9 记忆检索
+        构建Game 1（厨房任务）的LLM提示
+        
+        集成两个关键学习机制：
+        1. M9（语义规则）：从向量数据库检索相关规则
+        2. M8（失败学习）：从记忆系统获取最近失败信息
+        
+        Args:
+            obs: 观察对象，包含当前世界状态
+            
+        Returns:
+            list: 包含系统提示和用户消息的对话列表
         """
-        # [M9] 语义记忆检索
+        # [M9] 语义规则检索：基于当前上下文查询相关规则
         nearby_names = ", ".join([obj.id for obj in obs.nearby_objects])
         query_context = f"Action at {obs.agent.location}. Nearby: {nearby_names}. Holding: {obs.agent.holding}"
         
@@ -316,7 +224,7 @@ The following are critical rules learned from past experience. You MUST follow t
         else:
             print(f"📘 [M9] No semantic rules found for context.")
         
-        # [M8] 检索上次失败
+        # [M8] 失败学习：从当前session/episode获取最近失败
         last_fail_ep = episodic_memory.get_last_failure(
             session_id=obs.session_id,
             episode_id=obs.episode_id
@@ -339,13 +247,13 @@ The following are critical rules learned from past experience. You MUST follow t
                     advice = "Analyze failure and fix."
             
             failure_context = f"""
-[❌ LAST ACTION FAILED]
+[⚠️ LAST ACTION FAILED]
 - Action: {act.type} {act.target_item or act.target_poi}
 - Error: {res.failure_reason} 
 {advice}
 """
         
-        # 构建场景描述
+        # 构建世界状态描述
         nearby_desc = []
         for obj in obs.nearby_objects:
             desc = f"{obj.id}({obj.state})"
@@ -380,7 +288,24 @@ The following are critical rules learned from past experience. You MUST follow t
     
     async def _call_llm_and_parse(self, obs: ObservationPayload, messages: list) -> ActionPayload:
         """
-        调用 LLM 并解析 JSON 响应
+        调用LLM并解析响应为ActionPayload
+        
+        处理流程：
+        1. 调用LLM获取原始响应
+        2. 清理响应内容（移除JSON代码块标记）
+        3. 解析JSON为字典
+        4. 注入追踪键（session_id, episode_id, step_id）
+        5. 验证并返回ActionPayload
+        
+        Args:
+            obs: 观察对象，用于获取追踪信息
+            messages: LLM对话消息列表
+            
+        Returns:
+            ActionPayload: 解析后的动作对象
+            
+        Note:
+            如果解析失败，返回包含错误信息的THINK动作
         """
         raw_content = await get_completion(messages)
         
@@ -390,7 +315,7 @@ The following are critical rules learned from past experience. You MUST follow t
         try:
             clean_content = re.sub(r"```json|```", "", raw_content).strip()
             data = json.loads(clean_content)
-            # 注入 trace keys
+            # 注入追踪键确保响应包含完整的追踪信息
             data['session_id'] = obs.session_id
             data['episode_id'] = obs.episode_id
             data['step_id'] = obs.step_id
@@ -401,12 +326,23 @@ The following are critical rules learned from past experience. You MUST follow t
 
 
 # ==========================================
-# 向后兼容：保留全局函数接口
+# ==================== Backward-Compatible Global API ====================
 # ==========================================
 _reasoning_engine = ReasoningEngine()
 
 async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
     """
-    向后兼容的全局函数接口，内部调用 ReasoningEngine 实例
+    向后兼容的全局API函数
+    
+    提供与旧版本代码兼容的接口，内部委托给ReasoningEngine实例
+    
+    Args:
+        obs: 观察对象，包含当前世界状态和追踪信息
+        
+    Returns:
+        ActionPayload: 建议的下一个动作
+        
+    Note:
+        这是模块的公共接口，确保与现有调用代码兼容
     """
     return await _reasoning_engine.analyze_and_propose(obs)
