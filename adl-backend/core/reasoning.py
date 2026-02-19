@@ -4,6 +4,17 @@ Reasoning entry router.
 Feature flag:
 - REASONING_PIPELINE=v1 (default)
 - REASONING_PIPELINE=v2
+
+For v2 proposer strategy:
+- REASONING_V2_PROPOSER=mock (default) | v1
+- REASONING_V2_MOCK_SCRIPT=<json_file_path> (optional)
+
+For v2 guard strategy:
+- REASONING_V2_STAGNATION_WINDOW=4 (optional)
+- REASONING_V2_STAGNATION_OVERRIDE=THINK|SPEAK (optional)
+
+For v2 output adapter:
+- REASONING_V2_EXECUTION_MODE=INSTRUCT(default)|ACT (optional)
 """
 
 import os
