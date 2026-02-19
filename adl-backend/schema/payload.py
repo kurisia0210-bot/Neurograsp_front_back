@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -185,6 +185,15 @@ class ReflexVerdictModel(BaseModel):
     message: str = Field(..., description="Reflex verdict reason")
 
 
+class StepErrorPayload(BaseModel):
+    error_code: str = Field(..., description="Unified error code")
+    module: str = Field(..., description="Module that produced the error")
+    severity: str = Field(..., description="Severity level")
+    description: str = Field(..., description="Human-readable summary")
+    detail: str = Field(default="", description="Detailed message")
+    extra: Dict[str, Any] = Field(default_factory=dict, description="Extensible metadata")
+
+
 class AgentStepResponse(BaseModel):
     # top-level trace keys for observability
     session_id: str = Field(..., description="Session UUID")
@@ -194,6 +203,7 @@ class AgentStepResponse(BaseModel):
     intent: ActionPayload
     execution_result: ActionExecutionResult
     reflex_verdict: ReflexVerdictModel
+    error: StepErrorPayload
 
 
 # Resolve forward references used by ObservationPayload.last_action

@@ -1,7 +1,9 @@
 from pydantic import ValidationError
 
+from core.error_dictionary import classify_step_error
 from core.memory import episodic_memory
 from core.reasoning import analyze_and_propose
+from core.step_logger import emit_step_summary
 from schema.payload import (
     ActionExecutionResult,
     ActionPayload,
@@ -57,6 +59,20 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
             failure_type=FailureType.SCHEMA_ERROR,
             failure_reason=f"System Rejection: {str(e)}",
         )
+    except Exception as e:
+        print(f"[Reasoning Runtime Error] {e}")
+        intent = ActionPayload(
+            session_id=obs.session_id,
+            episode_id=obs.episode_id,
+            step_id=obs.step_id,
+            type=AgentActionType.THINK,
+            content=f"Reasoning Runtime Error: {str(e)}",
+        )
+        exec_result = ActionExecutionResult(
+            success=False,
+            failure_type=FailureType.REASONING_ERROR,
+            failure_reason=f"System Exception: {str(e)}",
+        )
 
     # 3) Reflex
     if exec_result is None:
@@ -80,6 +96,19 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
     if intent.type == AgentActionType.FINISH:
         episodic_memory.close_episode(obs.session_id)
 
+    reflex_model = ReflexVerdictModel(
+        verdict="BLOCK" if not exec_result.success else "ALLOW",
+        message=exec_result.failure_reason,
+    )
+    error_payload = classify_step_error(intent, exec_result)
+    emit_step_summary(
+        obs=obs,
+        intent=intent,
+        exec_result=exec_result,
+        reflex_verdict=reflex_model,
+        error=error_payload,
+    )
+
     # 5) Response
     return AgentStepResponse(
         session_id=obs.session_id,
@@ -87,8 +116,6 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
         step_id=obs.step_id,
         intent=intent,
         execution_result=exec_result,
-        reflex_verdict=ReflexVerdictModel(
-            verdict="BLOCK" if not exec_result.success else "ALLOW",
-            message=exec_result.failure_reason,
-        ),
+        reflex_verdict=reflex_model,
+        error=error_payload,
     )

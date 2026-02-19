@@ -175,7 +175,8 @@ export function AgentPlayground({ onBack }) {
           target_item,
           interaction_type,
           target_length,
-          content
+          content,
+          error: response?.error || null
         }
 
         setIntentHistory(prev => [...prev, historyEntry].slice(-30))
@@ -592,9 +593,14 @@ export function AgentPlayground({ onBack }) {
           ) : (
             intentHistory.map((entry, idx) => (
               <div key={entry.key} className="bg-gray-900/80 border border-gray-700 rounded p-2">
-                <div className="text-[10px] text-gray-400 mb-1">
-                  #{idx + 1} step={entry.step_id ?? "-"}
-                </div>
+                  <div className="text-[10px] text-gray-400 mb-1">
+                    #{idx + 1} step={entry.step_id ?? "-"}
+                  </div>
+                {entry.error && entry.error.error_code !== "OK" && (
+                  <div className="text-[10px] mb-1 text-red-300">
+                    error={entry.error.error_code} ({entry.error.module}/{entry.error.severity})
+                  </div>
+                )}
                 <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
 {JSON.stringify(
   {
@@ -603,7 +609,15 @@ export function AgentPlayground({ onBack }) {
     target_item: entry.target_item,
     interaction_type: entry.interaction_type,
     target_length: entry.target_length,
-    content: entry.content
+    content: entry.content,
+    error: entry.error
+      ? {
+          error_code: entry.error.error_code,
+          module: entry.error.module,
+          severity: entry.error.severity,
+          detail: entry.error.detail
+        }
+      : null
   },
   null,
   2

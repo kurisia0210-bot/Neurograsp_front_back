@@ -25,6 +25,7 @@ export function useAgentSystem({
   const [autoLoop, setAutoLoop] = useState(false)
   const [lastAction, setLastAction] = useState(null)
   const [lastResult, setLastResult] = useState(null)
+  const [lastError, setLastError] = useState(null)
   const [lastObservation, setLastObservation] = useState(null)
   const [lastResponse, setLastResponse] = useState(null)
   const [userInstruction, setUserInstruction] = useState(initialTask)
@@ -128,6 +129,7 @@ export function useAgentSystem({
 
       const data = await response.json()
       setLastResponse(data)
+      setLastError(data.error || null)
       if (typeof data.episode_id === 'number') {
         episodeIdRef.current = data.episode_id
       } else if (typeof data.intent?.episode_id === 'number') {
@@ -164,6 +166,14 @@ export function useAgentSystem({
         failure_type: 'REASONING_ERROR',
         failure_reason: e.message
       })
+      setLastError({
+        error_code: 'E_REASONING_RUNTIME',
+        module: 'frontend_bridge',
+        severity: 'ERROR',
+        description: 'Tick request failed before receiving backend response.',
+        detail: e.message,
+        extra: {}
+      })
     } finally {
       setIsThinking(false)
     }
@@ -197,6 +207,7 @@ export function useAgentSystem({
     setAgentState(resetState)
     setLastAction(null)
     setLastResult(null)
+    setLastError(null)
     setLastObservation(null)
     setLastResponse(null)
 
@@ -212,6 +223,7 @@ export function useAgentSystem({
     autoLoop,
     lastAction,
     lastResult,
+    lastError,
     lastObservation,
     lastResponse,
     userInstruction,
