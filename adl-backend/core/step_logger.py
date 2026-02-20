@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Dict
 
 
 def _enum_to_value(value: Any) -> Any:
     return value.value if hasattr(value, "value") else value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _shorten(text: str, max_len: int = 88) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
 
 
 def _safe_action(action: Any) -> Dict[str, Any]:
@@ -50,7 +64,10 @@ def emit_step_summary(
     error: Dict[str, Any],
 ) -> None:
     """
-    Emit exactly one structured JSON line per step for rapid diagnosis.
+    Emit structured per-step logs.
+    - Human brief line for quick debugging (default ON).
+    - One-line JSON for machine parsing (default ON).
+    - Pretty JSON block (default OFF).
     """
     summary = {
         "event": "step_summary",
@@ -72,5 +89,27 @@ def emit_step_summary(
             "error": error,
         },
     }
-    print("[StepSummary] " + json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
 
+    if _env_bool("STEP_SUMMARY_BRIEF", True):
+        sid = summary["session_id"]
+        eid = summary["episode_id"]
+        step = summary["step_id"]
+        intent = summary["output"]["intent"]
+        exec_result_safe = summary["output"]["execution_result"]
+        reflex_safe = summary["output"]["reflex_verdict"]
+        err = summary["output"]["error"] or {}
+        content = _shorten(str(intent.get("content", "")))
+        print(
+            "[StepSummaryBrief] "
+            f"s={sid} ep={eid} step={step} "
+            f"intent={intent.get('type')}({intent.get('interaction_type')}) "
+            f"target={intent.get('target_item') or intent.get('target_poi')} "
+            f"ok={exec_result_safe.get('success')} reflex={reflex_safe.get('verdict')} "
+            f"err={err.get('error_code')} msg={content!r}"
+        )
+
+    if _env_bool("STEP_SUMMARY_JSON", True):
+        print("[StepSummary] " + json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
+
+    if _env_bool("STEP_SUMMARY_PRETTY", False):
+        print("[StepSummaryPretty]\n" + json.dumps(summary, ensure_ascii=False, indent=2))

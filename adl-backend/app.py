@@ -1,17 +1,20 @@
-# app.py
-# Milestone 5: Pure I/O Layer
-# 没有任何业务逻辑，只HTTP 协议转换
+﻿from __future__ import annotations
+
+import argparse
+import importlib
+import os
+from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from schema.payload import ObservationPayload
-from core import agent as agent  # 👈 唯一依赖
+from schema.payload import AgentStepResponse, ObservationPayload
 
 app = FastAPI()
+_agent_module = None
 
-# CORS 设置 (保持不变)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,17 +23,93 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def read_root():
     return {"status": "COALA Agent System Online"}
 
-from schema.payload import ObservationPayload, AgentStepResponse # 导入
 
-@app.post("/api/tick", response_model=AgentStepResponse) # �?FastAPI 文档会自动更�?
+def _load_agent_module():
+    global _agent_module
+    if _agent_module is None:
+        _agent_module = importlib.import_module("core.agent")
+    return _agent_module
+
+
+@app.post("/api/tick", response_model=AgentStepResponse)
 async def tick(obs: ObservationPayload):
+    agent = _load_agent_module()
     return await agent.step(obs)
 
+
+def _set_env_if_provided(name: str, value: Optional[str]) -> None:
+    if value is not None:
+        os.environ[name] = value
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run COALA backend server with CLI options.")
+    parser.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8001, help="Server port (default: 8001)")
+
+    parser.add_argument("--pipeline", choices=["v1", "v2"], help="Reasoning pipeline")
+    parser.add_argument("--proposer", choices=["mock", "v1"], help="V2 proposer strategy")
+    parser.add_argument("--mode", choices=["INSTRUCT", "ACT"], help="V2 execution mode")
+    parser.add_argument("--mock-script", help="Path to V2 mock script json")
+
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Enable one-line JSON step summary (STEP_SUMMARY_JSON=true).",
+    )
+    parser.add_argument(
+        "--no-json",
+        action="store_true",
+        help="Disable one-line JSON step summary (STEP_SUMMARY_JSON=false).",
+    )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="Enable pretty step summary output (STEP_SUMMARY_PRETTY=true).",
+    )
+    parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="Enable brief step summary output (STEP_SUMMARY_BRIEF=true).",
+    )
+    parser.add_argument(
+        "--no-brief",
+        action="store_true",
+        help="Disable brief step summary output (STEP_SUMMARY_BRIEF=false).",
+    )
+    return parser.parse_args()
+
+
+def _apply_cli_env(args: argparse.Namespace) -> None:
+    _set_env_if_provided("REASONING_PIPELINE", args.pipeline)
+    _set_env_if_provided("REASONING_V2_PROPOSER", args.proposer)
+    _set_env_if_provided("REASONING_V2_EXECUTION_MODE", args.mode)
+    _set_env_if_provided("REASONING_V2_MOCK_SCRIPT", args.mock_script)
+
+    if args.json and args.no_json:
+        raise ValueError("--json and --no-json cannot be used together.")
+    if args.brief and args.no_brief:
+        raise ValueError("--brief and --no-brief cannot be used together.")
+
+    if args.json:
+        os.environ["STEP_SUMMARY_JSON"] = "true"
+    if args.no_json:
+        os.environ["STEP_SUMMARY_JSON"] = "false"
+    if args.pretty:
+        os.environ["STEP_SUMMARY_PRETTY"] = "true"
+    if args.brief:
+        os.environ["STEP_SUMMARY_BRIEF"] = "true"
+    if args.no_brief:
+        os.environ["STEP_SUMMARY_BRIEF"] = "false"
+
+
 if __name__ == "__main__":
-    print("�?COALA I/O Layer Starting...")
-    # 生产环境/CLI 兼容模式
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    args = _parse_args()
+    _apply_cli_env(args)
+    print("COALA I/O Layer Starting with CLI options...")
+    uvicorn.run(app, host=args.host, port=args.port)

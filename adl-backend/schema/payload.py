@@ -94,6 +94,18 @@ class ActionExecutionResult(BaseModel):
     failure_reason: str = ""
 
 
+class GoalSpecPayload(BaseModel):
+    """
+    Optional structured goal hint sent by frontend.
+    Backend still validates/resolves this into canonical GoalSpec.
+    """
+
+    goal_type: Optional[str] = Field(default=None, description="Goal type, e.g. MOVE_TO/PUT_IN")
+    goal_id: Optional[str] = Field(default=None, description="Stable goal identifier")
+    dsl: Optional[str] = Field(default=None, description="Goal DSL expression")
+    params: Dict[str, str] = Field(default_factory=dict, description="Goal parameters")
+
+
 class ObservationPayload(BaseModel):
     # P0-1/P0-3: hierarchical trace keys
     session_id: str = Field(..., description="Session UUID")
@@ -107,6 +119,10 @@ class ObservationPayload(BaseModel):
     agent: AgentSelfState
     nearby_objects: List[VisibleObject]
     global_task: str
+    goal_spec: Optional[GoalSpecPayload] = Field(
+        default=None,
+        description="Optional structured goal hint to avoid per-tick NL parsing"
+    )
 
     # P0-2: previous-step closure data
     last_action: Optional["ActionPayload"] = Field(
