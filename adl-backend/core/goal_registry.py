@@ -112,6 +112,92 @@ class MoveToGoalHandler(_GoalHandlerBase):
         return f"请先移动到 {poi}。"
 
 
+class OpenGoalHandler(_GoalHandlerBase):
+    goal_type = "OPEN"
+
+    def __init__(self, allowed_items: set[str]) -> None:
+        self._items = allowed_items
+
+    def validate(self, goal: GoalSpec) -> GoalValidationResult:
+        item = goal.params.get("item", "")
+        issues: list[str] = []
+        if item not in self._items:
+            issues.append(f"invalid item={item}")
+        return GoalValidationResult(
+            valid=not issues,
+            code="GOAL_VALID" if not issues else "GOAL_INVALID_OPEN",
+            issues=issues,
+        )
+
+    def is_done(self, obs: ObservationPayload, goal: GoalSpec, evaluator: GoalDslEvaluator) -> GoalEvalReport:
+        _ = evaluator
+        item = goal.params.get("item", "")
+        state, _ = self._object_state_relation(obs, item)
+        done = state == "open"
+        return GoalEvalReport(
+            satisfied=done,
+            code="GOAL_DONE_OPEN" if done else "GOAL_PENDING_OPEN",
+            message=(f"{item} is open." if done else f"{item} is not open yet."),
+        )
+
+    def progress(self, obs: ObservationPayload, goal: GoalSpec, evaluator: GoalDslEvaluator) -> GoalProgressResult:
+        done = self.is_done(obs, goal, evaluator).satisfied
+        return GoalProgressResult(
+            score=1.0 if done else 0.0,
+            stage="done" if done else "need_open",
+            message="Open target reached." if done else "Need to open target item.",
+        )
+
+    def coach(self, goal: GoalSpec, obs: ObservationPayload, evaluator: GoalDslEvaluator) -> str:
+        item = goal.params.get("item", "item")
+        if self.is_done(obs, goal, evaluator).satisfied:
+            return f"{item} 已经是打开状态。"
+        return f"请打开 {item}。"
+
+
+class CloseGoalHandler(_GoalHandlerBase):
+    goal_type = "CLOSE"
+
+    def __init__(self, allowed_items: set[str]) -> None:
+        self._items = allowed_items
+
+    def validate(self, goal: GoalSpec) -> GoalValidationResult:
+        item = goal.params.get("item", "")
+        issues: list[str] = []
+        if item not in self._items:
+            issues.append(f"invalid item={item}")
+        return GoalValidationResult(
+            valid=not issues,
+            code="GOAL_VALID" if not issues else "GOAL_INVALID_CLOSE",
+            issues=issues,
+        )
+
+    def is_done(self, obs: ObservationPayload, goal: GoalSpec, evaluator: GoalDslEvaluator) -> GoalEvalReport:
+        _ = evaluator
+        item = goal.params.get("item", "")
+        state, _ = self._object_state_relation(obs, item)
+        done = state == "closed"
+        return GoalEvalReport(
+            satisfied=done,
+            code="GOAL_DONE_CLOSE" if done else "GOAL_PENDING_CLOSE",
+            message=(f"{item} is closed." if done else f"{item} is not closed yet."),
+        )
+
+    def progress(self, obs: ObservationPayload, goal: GoalSpec, evaluator: GoalDslEvaluator) -> GoalProgressResult:
+        done = self.is_done(obs, goal, evaluator).satisfied
+        return GoalProgressResult(
+            score=1.0 if done else 0.0,
+            stage="done" if done else "need_close",
+            message="Close target reached." if done else "Need to close target item.",
+        )
+
+    def coach(self, goal: GoalSpec, obs: ObservationPayload, evaluator: GoalDslEvaluator) -> str:
+        item = goal.params.get("item", "item")
+        if self.is_done(obs, goal, evaluator).satisfied:
+            return f"{item} 已经是关闭状态。"
+        return f"请关闭 {item}。"
+
+
 class PutInGoalHandler(_GoalHandlerBase):
     goal_type = "PUT_IN"
 
@@ -343,6 +429,8 @@ class GoalRegistry:
 
     def _register_default_handlers(self) -> None:
         self.register_handler(MoveToGoalHandler(self._POIS))
+        self.register_handler(OpenGoalHandler(self._ITEMS))
+        self.register_handler(CloseGoalHandler(self._ITEMS))
         self.register_handler(PutInGoalHandler(self._ITEMS, self._CONTAINERS))
         self.register_handler(OpenThenPutInGoalHandler(self._ITEMS, self._CONTAINERS))
         self.register_handler(DslRawGoalHandler())
@@ -378,6 +466,32 @@ class GoalRegistry:
                     dsl=dsl,
                     goal=self._parser.parse(dsl),
                     params={"door": door, "item": item, "container": container},
+                )
+
+        m = re.search(r"^\s*open\s+([a-z_ ]+)\s*$", low)
+        if m:
+            item = self._normalize_item(m.group(1))
+            if item:
+                dsl = f"open({item})"
+                return GoalSpec(
+                    goal_type="OPEN",
+                    goal_id=f"OPEN:{item}",
+                    dsl=dsl,
+                    goal=self._parser.parse(dsl),
+                    params={"item": item},
+                )
+
+        m = re.search(r"^\s*close\s+([a-z_ ]+)\s*$", low)
+        if m:
+            item = self._normalize_item(m.group(1))
+            if item:
+                dsl = f"closed({item})"
+                return GoalSpec(
+                    goal_type="CLOSE",
+                    goal_id=f"CLOSE:{item}",
+                    dsl=dsl,
+                    goal=self._parser.parse(dsl),
+                    params={"item": item},
                 )
 
         m = re.search(r"move_to\s*\(\s*([a-z_ ]+)\s*\)", low)
@@ -523,6 +637,30 @@ class GoalRegistry:
                     dsl=dsl,
                     goal=self._parser.parse(dsl),
                     params={"poi": poi},
+                )
+
+        if goal_type == "OPEN":
+            item = str(params.get("item") or "").strip()
+            if item:
+                dsl = f"open({item})"
+                return GoalSpec(
+                    goal_type="OPEN",
+                    goal_id=goal_id or f"OPEN:{item}",
+                    dsl=dsl,
+                    goal=self._parser.parse(dsl),
+                    params={"item": item},
+                )
+
+        if goal_type == "CLOSE":
+            item = str(params.get("item") or "").strip()
+            if item:
+                dsl = f"closed({item})"
+                return GoalSpec(
+                    goal_type="CLOSE",
+                    goal_id=goal_id or f"CLOSE:{item}",
+                    dsl=dsl,
+                    goal=self._parser.parse(dsl),
+                    params={"item": item},
                 )
 
         if goal_type == "PUT_IN":

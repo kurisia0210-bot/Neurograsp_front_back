@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Protocol
 
 from core.common_v2 import make_action
+from core.goal_registry import GoalRegistry
 from core.reasoning_v1 import analyze_and_propose as analyze_and_propose_v1
 from schema.payload import ActionPayload, ObservationPayload
 
@@ -33,6 +35,7 @@ class MockProposer:
 
     def __init__(self, script_path: Optional[str] = None) -> None:
         self._script = self._load_script(script_path)
+        self._goal_registry = GoalRegistry()
 
     def _load_script(self, script_path: Optional[str]) -> List[Dict[str, Any]]:
         if not script_path:
@@ -74,6 +77,66 @@ class MockProposer:
         return None
 
     def _from_rules(self, obs: ObservationPayload) -> ActionPayload:
+        goal = self._goal_registry.resolve_with_hint(obs.global_task, getattr(obs, "goal_spec", None))
+        if goal is not None and goal.goal_type == "MOVE_TO":
+            poi = goal.params.get("poi")
+            return make_action(
+                obs,
+                type="MOVE_TO",
+                target_poi=poi,
+                content=f"MockRule: move to {poi}.",
+            )
+
+        if goal is not None and goal.goal_type == "OPEN":
+            item = goal.params.get("item")
+            return make_action(
+                obs,
+                type="INTERACT",
+                target_item=item,
+                interaction_type="OPEN",
+                content=f"MockRule: open {item}.",
+            )
+
+        if goal is not None and goal.goal_type == "CLOSE":
+            item = goal.params.get("item")
+            return make_action(
+                obs,
+                type="INTERACT",
+                target_item=item,
+                interaction_type="CLOSE",
+                content=f"MockRule: close {item}.",
+            )
+
+        if goal is None and self._looks_like_move_task(obs.global_task):
+            return make_action(
+                obs,
+                type="THINK",
+                content=(
+                    "Unsupported MOVE_TO target. "
+                    "Use one of: table_center, fridge_zone, stove_zone."
+                ),
+            )
+
+        if goal is None and self._looks_like_open_task(obs.global_task):
+            return make_action(
+                obs,
+                type="THINK",
+                content=(
+                    "Unsupported OPEN target. "
+                    "Use one of: fridge_door, red_cube, half_cube_left, half_cube_right."
+                ),
+            )
+
+        if goal is None and self._looks_like_close_task(obs.global_task):
+            return make_action(
+                obs,
+                type="THINK",
+                content=(
+                    "Unsupported CLOSE target. "
+                    "Use one of: fridge_door, red_cube, half_cube_left, half_cube_right."
+                ),
+            )
+
         if self._find_state(obs, "red_cube") == "in_fridge":
             return make_action(obs, type="THINK", content="MockRule: waiting for FinishGuard.")
 
@@ -113,6 +176,21 @@ class MockProposer:
             type="THINK",
             content="MockRule: waiting for deterministic next condition.",
         )
+
+    @staticmethod
+    def _looks_like_move_task(task: str) -> bool:
+        text = (task or "").strip().lower()
+        return bool(re.search(r"(?:^|\b)(?:move|go|walk|mv)\b", text))
+
+    @staticmethod
+    def _looks_like_open_task(task: str) -> bool:
+        text = (task or "").strip().lower()
+        return bool(re.search(r"(?:^|\b)open\b", text))
+
+    @staticmethod
+    def _looks_like_close_task(task: str) -> bool:
+        text = (task or "").strip().lower()
+        return bool(re.search(r"(?:^|\b)close\b", text))
 
     async def propose(self, obs: ObservationPayload) -> ActionPayload:
         scripted = self._from_script(obs)

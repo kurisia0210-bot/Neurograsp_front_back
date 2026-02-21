@@ -1,509 +1,551 @@
-// Stagnation Detection Test Playground
-// 最小停滞场景：2个位置 + 1个不可达目标 = 诱发循环
-import React, { useState, useEffect } from 'react'
+﻿import React, { useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera, Grid, Text } from '@react-three/drei'
-import * as THREE from 'three'
+import { Grid, OrthographicCamera } from '@react-three/drei'
+import {
+  ActionTriggerBubble,
+  executeRegisteredAction
+} from '../components/game/mechanics/ActionRegistry'
+
+const POI_TO_SCENE_POSITION = {
+  table_center: [0, 1, 2],
+  fridge_zone: [-3, 1, 0],
+  stove_zone: [3, 1, 0]
+}
+
+const TABLE_CUBE_POSITION = [-0.4, 1.825, -0.5]
+const HOLD_AREA_POSITION = [2.8, 0.02, -1.2]
+const HOLD_CUBE_POSITION = [2.8, 1.1, -1.2]
 
 export function Playground() {
+  const [taskInput, setTaskInput] = useState('go to fridge')
+  const [isParsing, setIsParsing] = useState(false)
+  const [parseResult, setParseResult] = useState(null)
+  const [parseError, setParseError] = useState(null)
+  const [parseHistory, setParseHistory] = useState([])
+  const [actionBubble, setActionBubble] = useState({
+    visible: false,
+    status: 'NO_INTENT',
+    message: ''
+  })
+  const [dashboardCollapsed, setDashboardCollapsed] = useState(false)
+  const [fridgeOpen, setFridgeOpen] = useState(false)
+  const [agentLocation, setAgentLocation] = useState('table_center')
+  const [stepId, setStepId] = useState(0)
+  const [holdingItem, setHoldingItem] = useState(null)
 
-  
-  // === 🌍 最小世界状态 ===
-  const [agentLocation, setAgentLocation] = useState("zone_A")
-  const [stepCount, setStepCount] = useState(0)
-  const [actionHistory, setActionHistory] = useState([])
-  
-  // === 🧠 Agent 状态 ===
-  const [lastAction, setLastAction] = useState(null)
-  const [isThinking, setIsThinking] = useState(false)
-  const [watchdogAlert, setWatchdogAlert] = useState(null)
-  
-  // === 📡 调试状态 ===
-  const [lastRequest, setLastRequest] = useState(null)
-  const [lastResponse, setLastResponse] = useState(null)
-  const [showDebug, setShowDebug] = useState(true)
-  
-  // === 🔥 西西弗斯测试模式 ===
-  const [sisyphusMode, setSisyphusMode] = useState(false)
-  const [isHolding, setIsHolding] = useState(false)
-  const [stateHistory, setStateHistory] = useState([])
+  const exampleTasks = [
+    'go to fridge',
+    'move to table',
+    'go to stove',
+    'open fridge door',
+    'close fridge door',
+    'pick red cube',
+    'put red cube in fridge',
+    'mv to fridge',
+    'open fridge door then put red cube in fridge',
+    'at(agent, fridge_zone)',
+    'inside(red_cube, fridge_main)',
+    'THEN([open(fridge_door), inside(red_cube, fridge_main)])'
+  ]
 
-  // 生成世界状态的唯一指纹
-// 包括：Agent位置 + 是否持有物品 + (扩展性)关键物品位
-  // ==========================================
-  // 🎯 最小停滞场景设计
-  // ==========================================
-  // 场景：target 在 zone_B，但 zone_B 永远"太远"无法到达
-  // Agent 会尝试：zone_A -> zone_B (失败) -> zone_A -> zone_B (失败) ...
-  
-  const perceiveWorld = () => {
-    // 映射自定义位置到后端枚举值
-    const locationMap = {
-      "zone_A": "table_center",   // 伪装成桌子中心
-      "zone_B": "fridge_zone"     // 伪装成冰箱区域
-    }
-    
-    return {
-      timestamp: Date.now() / 1000,
-      agent: {
-        location: locationMap[agentLocation], // 使用合法的 PoiName 枚举
-        holding: null
-      },
-      nearby_objects: [
-        {
-          id: "red_cube",          // 合法的 ItemName
-          state: "on_table",       // 合法的 ObjectState (伪装：实际不可达)
-          relation: agentLocation === "zone_A" ? "visible far away" : "still unreachable"
-        }
-      ],
-      global_task: "Pick up the red cube" // 不可能完成的任务
-    }
-  }
+  const parseTask = async () => {
+    if (!taskInput.trim()) return
 
-  // ==========================================
-  // 🔥 西西弗斯模式：生成世界状态哈希
-  // ==========================================
-  const generateWorldHash = (location, holding) => {
-    return `${location}|${holding ? "holding" : "empty"}`
-  }
-
-  // ==========================================
-  // 🕵️ 停滞检测（基于状态历史）
-  // ==========================================
-  const detectStagnation = (action, history) => {
-    if (history.length < 5) return null
-    
-    const recent5 = history.slice(-5)
-    const uniqueStates = new Set(recent5)
-    
-    // 如果最近5次状态只有1-2种，判定为停滞
-    if (uniqueStates.size <= 2) {
-      return `🚨 状态停滞检测！最近5步只有 ${uniqueStates.size} 种状态: ${Array.from(uniqueStates).join(", ")}`
-    }
-    
-    return null
-  }
-
-  // ==========================================
-  // 🔄 Tick 循环
-  // ==========================================
-  const tick = async () => {
-    if (isThinking) return
-    setIsThinking(true)
-    setStepCount(prev => prev + 1)
+    setIsParsing(true)
+    setParseError(null)
 
     try {
-      // === 🔥 西西弗斯模式：本地模拟循环 ===
-      if (sisyphusMode) {
-        let nextActionType = "WAIT"
-        let nextHolding = isHolding
-        
-        // 简单状态机：没拿就拿，拿了就放
-        if (!isHolding) {
-          nextActionType = "PICK"
-          nextHolding = true
-          console.log("🔥 Agent: 拿起方块...")
-        } else {
-          nextActionType = "DROP"
-          nextHolding = false
-          console.log("🔥 Agent: 哎呀太烫了！放下方块...")
-        }
-        
-        // 记录状态历史
-        const currentHash = generateWorldHash(agentLocation, nextHolding)
-        const newHistory = [...stateHistory, currentHash]
-        setStateHistory(newHistory)
-        
-        // 检测停滞
-        const alert = detectStagnation({ type: nextActionType }, newHistory)
-        if (alert) {
-          setWatchdogAlert(alert)
-        }
-        
-        // 更新状态
-        setIsHolding(nextHolding)
-        setLastAction({
-          type: nextActionType,
-          content: nextHolding ? "拿起红方块" : "太烫了！放下方块"
-        })
-        
-        // 记录动作历史
-        setActionHistory(prev => [...prev, nextActionType].slice(-5))
-        
-        setIsThinking(false)
-        return
+      const nextStepId = stepId + 1
+      setStepId(nextStepId)
+
+      const observationPayload = {
+        session_id: 'goal-dsl-test',
+        episode_id: 1,
+        step_id: nextStepId,
+        timestamp: Date.now() / 1000,
+        agent: {
+          location: agentLocation,
+          holding: holdingItem
+        },
+        nearby_objects: [
+          {
+            id: 'red_cube',
+            state: holdingItem === 'red_cube' ? 'in_hand' : 'on_table',
+            relation: holdingItem === 'red_cube' ? 'held by agent' : 'on table_surface'
+          },
+          { id: 'fridge_door', state: fridgeOpen ? 'open' : 'closed', relation: 'front' },
+          { id: 'fridge_main', state: 'installed', relation: 'storage' },
+          { id: 'table_surface', state: 'installed', relation: 'surface' }
+        ],
+        global_task: taskInput.trim()
       }
-      
-      // === 🌐 正常模式：调用后端 ===
-      const obs = perceiveWorld()
-      setLastRequest(obs) // 记录请求
-      
+
       const response = await fetch('http://127.0.0.1:8001/api/tick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(obs)
+        body: JSON.stringify(observationPayload)
       })
 
-      if (!response.ok) throw new Error(`Backend error: ${response.status}`)
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`)
+      }
+
       const data = await response.json()
-      setLastResponse(data) // 记录响应
-      
-      setLastAction(data.intent)
-      
-      // 记录动作历史
-      const actionSig = `${data.intent.type}:${data.intent.target_poi || data.intent.target_item}`
-      setActionHistory(prev => [...prev, actionSig].slice(-5))
-      
-      // 检测 Watchdog 报警（如果 content 包含 STAGNATION）
-      if (data.intent.content?.includes("STAGNATION") || data.intent.content?.includes("Stagnation")) {
-        setWatchdogAlert(data.intent.content)
+
+      const result = {
+        task: taskInput.trim(),
+        timestamp: new Date().toLocaleTimeString(),
+        rawResponse: data,
+        intent: data.intent,
+        reflexVerdict: data.reflex_verdict,
+        stepId: data.step_id
       }
-      
-      // 执行动作（模拟移动，但永远失败）
-      if (data.intent.type === "MOVE_TO") {
-        const target = data.intent.target_poi
-        // 后端返回的是 "fridge_zone" 或 "table_center"
-        if (target === "fridge_zone") {
-          // 假装移动到 zone_B，但立即"失败"回到 zone_A
-          setAgentLocation("zone_B")
-          setTimeout(() => setAgentLocation("zone_A"), 500)
-        } else if (target === "table_center") {
-          setAgentLocation("zone_A")
+
+      setParseResult(result)
+      setParseHistory(prev => [result, ...prev].slice(0, 10))
+      applyIntentToWorld(data.intent)
+
+      const triggerResult = executeRegisteredAction(data.intent, {
+        onHold: (targetItem) => {
+          if (targetItem === 'red_cube') {
+            setHoldingItem('red_cube')
+          }
         }
-      }
-
-    } catch (e) {
-      console.error("Tick error:", e)
+      })
+      setActionBubble({
+        visible: true,
+        status: triggerResult.status,
+        message: triggerResult.message
+      })
+    } catch (error) {
+      console.error('Parse error:', error)
+      setParseError(error.message)
+      setParseResult(null)
     } finally {
-      setIsThinking(false)
+      setIsParsing(false)
     }
   }
 
-  // 自动运行
-  const [autoRun, setAutoRun] = useState(false)
+  const applyIntentToWorld = (intent) => {
+    if (!intent || !intent.type) return
+
+    if (intent.type === 'MOVE_TO' && intent.target_poi) {
+      if (POI_TO_SCENE_POSITION[intent.target_poi]) {
+        setAgentLocation(intent.target_poi)
+      }
+      return
+    }
+
+    if (intent.type === 'INTERACT' && intent.target_item === 'fridge_door') {
+      const interactionType = String(intent.interaction_type || 'NONE').toUpperCase()
+      if (interactionType === 'OPEN') setFridgeOpen(true)
+      if (interactionType === 'CLOSE') setFridgeOpen(false)
+      if (interactionType === 'TOGGLE') setFridgeOpen(prev => !prev)
+    }
+
+    if (intent.type === 'INTERACT') {
+      const interactionType = String(intent.interaction_type || 'NONE').toUpperCase()
+      if (interactionType === 'PLACE' && intent.target_item === 'table_surface') {
+        setHoldingItem(null)
+      }
+    }
+  }
+
   useEffect(() => {
-    let interval
-    if (autoRun && !watchdogAlert) {
-      interval = setInterval(tick, 2000)
-    }
-    return () => clearInterval(interval)
-  }, [autoRun, watchdogAlert, agentLocation])
+    if (!actionBubble.visible) return
+    const timer = setTimeout(() => {
+      setActionBubble(prev => ({ ...prev, visible: false }))
+    }, 1400)
+    return () => clearTimeout(timer)
+  }, [actionBubble.visible])
 
-  const reset = () => {
-    setAgentLocation("zone_A")
-    setStepCount(0)
-    setActionHistory([])
-    setLastAction(null)
-    setWatchdogAlert(null)
-    setLastRequest(null)
-    setLastResponse(null)
-    setIsHolding(false)
-    setStateHistory([])
-  }
+  const agentScenePosition = POI_TO_SCENE_POSITION[agentLocation] || POI_TO_SCENE_POSITION.table_center
 
-  // ==========================================
-  // 🎨 UI
-  // ==========================================
-  return (
-    <div className="w-full h-screen relative bg-white">
-      {/* 顶部信息栏 */}
-      <div className="absolute top-4 left-4 z-50 bg-white border-2 border-blue-500 p-4 rounded-lg shadow-lg text-gray-800 font-mono text-sm w-96">
-        <div className="font-bold mb-2 text-blue-600 flex items-center justify-between">
-          <span>🐕 停滞检测器 (Watchdog)</span>
-          {sisyphusMode && <span className="text-xs bg-orange-500 text-white px-2 py-1 rounded">西西弗斯模式</span>}
-        </div>
-        <div className="space-y-1 text-xs">
-          <div>步数: <span className="font-bold">{stepCount}</span></div>
-          <div>位置: <span className="text-green-600 font-bold">{agentLocation}</span></div>
-          {sisyphusMode && (
-            <div>持有: <span className={`font-bold ${isHolding ? 'text-red-600' : 'text-gray-400'}`}>
-              {isHolding ? "🔥 拿着方块" : "空手"}
-            </span></div>
-          )}
-          <div>历史: <span className="text-gray-500">{actionHistory.join(" → ")}</span></div>
-          {sisyphusMode && stateHistory.length > 0 && (
-            <div className="text-[10px] text-gray-400">
-              状态: {stateHistory.slice(-3).join(" → ")}
-            </div>
-          )}
-        </div>
-      </div>
+  const renderEmptyScene = () => (
+    <Canvas className="w-full h-full" style={{ background: '#1a1a2e' }}>
+      <OrthographicCamera
+        makeDefault
+        position={[10, 10, 10]}
+        zoom={60}
+        onUpdate={c => c.lookAt(0, 0, 0)}
+      />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[5, 5, 5]} intensity={0.6} />
+      <pointLight position={[0, 5, 0]} intensity={0.3} color="#4cc9f0" />
 
-      {/* Watchdog 报警 */}
-      {watchdogAlert && (
-        <div className="absolute top-4 right-4 z-50 bg-red-100 border-2 border-red-600 p-4 rounded-lg shadow-lg text-red-900 font-mono text-sm max-w-md animate-pulse">
-          <div className="font-bold text-red-600 mb-2">🚨 看门狗报警！</div>
-          <div className="text-xs">{watchdogAlert}</div>
-        </div>
+      <Grid args={[20, 20]} cellColor="#2d3748" sectionColor="#4a5568" />
+
+      {/* 桌子区域 - 用网格表示 */}
+      <group position={[0, 0.01, 0]}>
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[4, 0.02, 2]} />
+          <meshStandardMaterial color="#e2e8f0" wireframe={true} transparent={true} opacity={0.6} />
+        </mesh>
+        {/* 桌子区域标记 */}
+        <mesh position={[0, 0.05, 0]}>
+          <boxGeometry args={[4.2, 0.1, 2.2]} />
+          <meshStandardMaterial color="#e2e8f0" wireframe={true} transparent={true} opacity={0.3} />
+        </mesh>
+      </group>
+
+      {/* Agent胶囊体 - 纯边框 */}
+      <group position={agentScenePosition}>
+        <mesh position={[0, 1, 0]}>
+          <capsuleGeometry args={[0.3, 1, 4]} />
+          <meshStandardMaterial color="#fbbf24" wireframe={true} />
+        </mesh>
+      </group>
+
+      {/* 冰箱区域 - 用网格表示 */}
+      <group position={[-3, 0, -0.5]}>
+        <mesh position={[0, 0.5, 0]}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#60a5fa" wireframe={true} transparent={true} opacity={0.6} />
+        </mesh>
+        <mesh position={[0.5, 0.5, 0.52]} rotation={[0, fridgeOpen ? 1.6 : 0, 0]}>
+          <mesh position={[-0.5, 0, 0]}>
+            <boxGeometry args={[1, 1, 0.05]} />
+            <meshStandardMaterial color="#94a3b8" wireframe={true} transparent={true} opacity={0.9} />
+          </mesh>
+        </mesh>
+        {/* 冰箱区域标记 */}
+        <mesh position={[0, 0.05, 0]}>
+          <boxGeometry args={[1.2, 0.1, 1.2]} />
+          <meshStandardMaterial color="#60a5fa" wireframe={true} transparent={true} opacity={0.3} />
+        </mesh>
+      </group>
+
+      {/* Hold area */}
+      <group position={HOLD_AREA_POSITION}>
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[1.1, 0.04, 1.1]} />
+          <meshStandardMaterial color="#fbbf24" wireframe={true} transparent={true} opacity={0.7} />
+        </mesh>
+        <mesh position={[0, 0.08, 0]}>
+          <boxGeometry args={[1.2, 0.1, 1.2]} />
+          <meshStandardMaterial color="#f59e0b" wireframe={true} transparent={true} opacity={0.25} />
+        </mesh>
+      </group>
+
+      {/* Red cube on table */}
+      {holdingItem !== 'red_cube' && (
+        <mesh position={TABLE_CUBE_POSITION}>
+          <boxGeometry args={[0.25, 0.25, 0.25]} />
+          <meshStandardMaterial color="#ff6b6b" wireframe={true} />
+        </mesh>
       )}
 
-      {/* 动作显示 */}
-      {lastAction && (
-        <div className="absolute bottom-24 left-4 z-50 bg-green-50 border-2 border-green-500 p-3 rounded shadow-lg text-gray-800 font-mono text-xs w-80">
-          <div className="font-bold mb-1 text-green-700">最后动作:</div>
-          <div>类型: <span className="text-blue-600 font-bold">{lastAction.type}</span></div>
-          {lastAction.target_poi && <div>目标: {lastAction.target_poi}</div>}
-          <div className="text-gray-600 mt-1">{lastAction.content}</div>
-        </div>
+      {/* Red cube in hold area */}
+      {holdingItem === 'red_cube' && (
+        <mesh position={HOLD_CUBE_POSITION}>
+          <boxGeometry args={[0.25, 0.25, 0.25]} />
+          <meshStandardMaterial color="#ff6b6b" wireframe={true} />
+        </mesh>
       )}
 
-      {/* 控制按钮 */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2">
-        {/* 主控制按钮 */}
-        <div className="flex gap-3">
-          <button 
-            onClick={tick} 
-            disabled={isThinking || autoRun}
-            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold rounded shadow-lg"
-          >
-            单步
-          </button>
-          <button 
-            onClick={() => setAutoRun(!autoRun)}
-            disabled={!!watchdogAlert}
-            className={`px-6 py-3 font-bold rounded shadow-lg text-white ${
-              autoRun ? 'bg-red-500 animate-pulse' : 'bg-green-500 hover:bg-green-600'
-            } disabled:bg-gray-400`}
-          >
-            {autoRun ? "停止" : "自动"}
-          </button>
-          <button 
-            onClick={reset}
-            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded shadow-lg"
-          >
-            重置
-          </button>
-          <button 
-            onClick={() => setShowDebug(!showDebug)}
-            className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded shadow-lg"
-          >
-            {showDebug ? "隐藏调试" : "显示调试"}
-          </button>
-        </div>
-        
-        {/* 模式切换按钮 */}
-        <div className="flex gap-2 justify-center">
-          <button 
-            onClick={() => {
-              setSisyphusMode(false)
-              reset()
-            }}
-            className={`px-4 py-2 text-sm font-bold rounded shadow ${
-              !sisyphusMode ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-            }`}
-          >
-            🌐 后端模式
-          </button>
-          <button 
-            onClick={() => {
-              setSisyphusMode(true)
-              reset()
-            }}
-            className={`px-4 py-2 text-sm font-bold rounded shadow ${
-              sisyphusMode ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-600'
-            }`}
-          >
-            🔥 西西弗斯模式
-          </button>
-        </div>
-      </div>
+      {/* 区域标记 */}
+      <group>
+        {/* 桌子区域标记 */}
+        <mesh position={[0, 0.2, 1.2]}>
+          <boxGeometry args={[0.3, 0.05, 0.3]} />
+          <meshStandardMaterial color="#e2e8f0" />
+        </mesh>
+        {/* 冰箱区域标记 */}
+        <mesh position={[-3, 0.2, 0]}>
+          <boxGeometry args={[0.3, 0.05, 0.3]} />
+          <meshStandardMaterial color="#60a5fa" />
+        </mesh>
+      </group>
+    </Canvas>
+  )
 
-      {/* 📡 前后端交互 Dashboard */}
-      {showDebug && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-white border-2 border-purple-500 rounded-lg shadow-2xl w-[800px] max-h-[600px] overflow-hidden">
-          <div className="bg-purple-500 text-white px-4 py-2 font-bold flex justify-between items-center">
-            <span>📡 前后端通信调试面板</span>
-            <button 
-              onClick={() => setShowDebug(false)}
-              className="text-white hover:text-gray-200"
-            >
-              ✕
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-2 divide-x divide-gray-300 h-[550px]">
-            {/* 左侧：请求 (Request) */}
-            <div className="p-4 overflow-y-auto">
-              <div className="font-bold text-blue-600 mb-2 flex items-center gap-2">
-                <span>📤</span>
-                <span>请求 (Frontend → Backend)</span>
-              </div>
-              {lastRequest ? (
-                <div className="space-y-2">
-                  <div className="bg-blue-50 p-2 rounded text-xs">
-                    <div className="font-bold text-blue-700 mb-1">Endpoint:</div>
-                    <code className="text-blue-600">POST /api/tick</code>
-                  </div>
-                  <div className="bg-gray-50 p-2 rounded">
-                    <div className="font-bold text-gray-700 mb-1 text-xs">Payload:</div>
-                    <pre className="text-[10px] font-mono text-gray-800 whitespace-pre-wrap overflow-x-auto">
-                      {JSON.stringify(lastRequest, null, 2)}
-                    </pre>
-                  </div>
+  const renderDashboard = () => {
+    if (dashboardCollapsed) {
+      return (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="bg-white/90 backdrop-blur-sm border-2 border-blue-500 rounded-xl p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">G</span>
                 </div>
-              ) : (
-                <div className="text-gray-400 text-sm italic">等待第一次请求...</div>
-              )}
+                <div>
+                  <h1 className="text-xl font-bold text-gray-800">Goal DSL Tester</h1>
+                  <p className="text-gray-600 text-xs">Collapsed - Click to expand</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDashboardCollapsed(false)}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg shadow-lg transition-colors"
+              >
+                Expand
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <>
+        {/* 主Dashboard */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="bg-white/90 backdrop-blur-sm border-2 border-blue-500 rounded-xl p-4 shadow-2xl min-w-[500px]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-xl">G</span>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-800">Goal DSL MVP Tester</h1>
+                  <p className="text-gray-600 text-sm">Reuse /api/tick for task parsing validation</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                  Route B: Existing API
+                </div>
+                <button
+                  onClick={() => setDashboardCollapsed(true)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg shadow transition-colors"
+                >
+                  Collapse
+                </button>
+              </div>
             </div>
 
-            {/* 右侧：响应 (Response) */}
-            <div className="p-4 overflow-y-auto">
-              <div className="font-bold text-green-600 mb-2 flex items-center gap-2">
-                <span>📥</span>
-                <span>响应 (Backend → Frontend)</span>
+            <div className="mb-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={taskInput}
+                  onChange={e => setTaskInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && parseTask()}
+                  placeholder="Enter a task, e.g. Put red cube in fridge"
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-800"
+                  disabled={isParsing}
+                />
+                <button
+                  onClick={parseTask}
+                  disabled={isParsing || !taskInput.trim()}
+                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-bold rounded-lg shadow-lg transition-colors"
+                >
+                  {isParsing ? 'Parsing...' : 'Parse'}
+                </button>
               </div>
-              {lastResponse ? (
-                <div className="space-y-2">
-                  <div className="bg-green-50 p-2 rounded text-xs">
-                    <div className="font-bold text-green-700 mb-1">Status:</div>
-                    <code className="text-green-600">200 OK</code>
-                  </div>
-                  <div className="bg-gray-50 p-2 rounded">
-                    <div className="font-bold text-gray-700 mb-1 text-xs">Response:</div>
-                    <pre className="text-[10px] font-mono text-gray-800 whitespace-pre-wrap overflow-x-auto">
-                      {JSON.stringify(lastResponse, null, 2)}
-                    </pre>
-                  </div>
-                  
-                  {/* 高亮关键信息 */}
-                  <div className="bg-yellow-50 border border-yellow-300 p-2 rounded text-xs">
-                    <div className="font-bold text-yellow-700 mb-1">关键信息:</div>
-                    <div className="space-y-1">
-                      <div>动作类型: <span className="font-mono text-blue-600">{lastResponse.intent?.type}</span></div>
-                      {lastResponse.intent?.target_poi && (
-                        <div>目标位置: <span className="font-mono text-green-600">{lastResponse.intent.target_poi}</span></div>
-                      )}
-                      {lastResponse.intent?.content && (
-                        <div className="text-gray-600">推理: {lastResponse.intent.content}</div>
-                      )}
-                      <div>判决: <span className={`font-bold ${lastResponse.reflex_verdict?.verdict === 'ALLOW' ? 'text-green-600' : 'text-red-600'}`}>
-                        {lastResponse.reflex_verdict?.verdict}
-                      </span></div>
+
+              <div className="mt-3">
+                <p className="text-gray-600 text-sm mb-2">Example tasks:</p>
+                <div className="flex flex-wrap gap-2">
+                  {exampleTasks.map((task, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        setTaskInput(task)
+                        setTimeout(() => parseTask(), 100)
+                      }}
+                      className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      {task.length > 30 ? task.substring(0, 30) + '...' : task}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-800">Parse Result</h2>
+                {parseResult && (
+                  <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">OK</span>
+                )}
+              </div>
+
+              {parseError ? (
+                <div className="bg-red-50 border border-red-200 rounded p-3">
+                  <div className="text-red-700 font-bold mb-1">Parse failed</div>
+                  <p className="text-red-600 text-sm">{parseError}</p>
+                  <p className="text-red-500 text-xs mt-2">Ensure backend is running on 127.0.0.1:8001</p>
+                </div>
+              ) : parseResult ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-3 rounded border">
+                      <p className="text-gray-500 text-xs mb-1">Task</p>
+                      <p className="font-mono text-gray-800 break-words">{parseResult.task}</p>
+                    </div>
+                    <div className="bg-white p-3 rounded border">
+                      <p className="text-gray-500 text-xs mb-1">Time</p>
+                      <p className="text-gray-800">{parseResult.timestamp}</p>
                     </div>
                   </div>
+
+                  {parseResult.intent && (
+                    <div className="bg-white p-3 rounded border">
+                      <p className="text-gray-500 text-xs mb-2">Intent</p>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Type</span>
+                          <span className="font-mono text-gray-800">{parseResult.intent.type || 'N/A'}</span>
+                        </div>
+                        {parseResult.intent.target_poi && (
+                          <div className="flex items-center gap-3">
+                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">Target POI</span>
+                            <span className="font-mono text-gray-800">{parseResult.intent.target_poi}</span>
+                          </div>
+                        )}
+                        {parseResult.intent.target_item && (
+                          <div className="flex items-center gap-3">
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">Target Item</span>
+                            <span className="font-mono text-gray-800">{parseResult.intent.target_item}</span>
+                          </div>
+                        )}
+                        {parseResult.intent.content && (
+                          <div className="mt-2">
+                            <p className="text-gray-500 text-xs mb-1">Reasoning</p>
+                            <p className="text-gray-700 text-sm">{parseResult.intent.content}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {parseResult.reflexVerdict && (
+                    <div className="bg-white p-3 rounded border">
+                      <p className="text-gray-500 text-xs mb-2">Reflex Verdict</p>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={[
+                            'px-2 py-1 text-xs rounded',
+                            parseResult.reflexVerdict.verdict === 'ALLOW'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          ].join(' ')}
+                        >
+                          {parseResult.reflexVerdict.verdict}
+                        </span>
+                        <span className="text-gray-600 text-sm">{parseResult.reflexVerdict.message || 'No message'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <details className="bg-gray-100 rounded">
+                    <summary className="px-3 py-2 text-gray-700 text-sm cursor-pointer hover:bg-gray-200 rounded">
+                      Show raw response JSON
+                    </summary>
+                    <pre className="p-3 text-xs bg-gray-900 text-gray-300 rounded-b overflow-auto max-h-60">
+                      {JSON.stringify(parseResult.rawResponse, null, 2)}
+                    </pre>
+                  </details>
                 </div>
               ) : (
-                <div className="text-gray-400 text-sm italic">等待后端响应...</div>
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-3">G</div>
+                  <p>Enter a task and click Parse</p>
+                  <p className="text-sm mt-2">The backend will return parsed intent and verdict.</p>
+                </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* 历史记录 */}
+        {parseHistory.length > 0 && (
+          <div className="absolute bottom-4 right-4 z-50 pointer-events-auto w-96">
+            <div className="bg-white/90 backdrop-blur-sm border-2 border-gray-300 rounded-xl p-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-800">Parse History</h3>
+                <button
+                  onClick={() => setParseHistory([])}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {parseHistory.map((item, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-50 p-3 rounded border border-gray-200 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => {
+                      setTaskInput(item.task)
+                      setParseResult(item)
+                    }}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-mono text-sm text-gray-800 truncate">{item.task}</span>
+                      <span className="text-xs text-gray-500">{item.timestamp}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={[
+                          'text-xs px-2 py-0.5 rounded',
+                          item.intent?.type ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                        ].join(' ')}
+                      >
+                        {item.intent?.type || 'NO_TYPE'}
+                      </span>
+                      {item.intent?.target_poi && (
+                        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
+                          {item.intent.target_poi}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
       )}
 
-      {/* 3D 场景 */}
-      <Canvas>
-        <OrthographicCamera makeDefault position={[10, 10, 10]} zoom={60} onUpdate={c => c.lookAt(0, 0, 0)} />
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[5, 5, 5]} intensity={0.5} />
-
-        {/* Zone A (起点) */}
-        <group position={[-3, 0, 0]}>
-          <mesh position={[0, 0.05, 0]}>
-            <boxGeometry args={[2, 0.1, 2]} />
-            <meshStandardMaterial color={agentLocation === "zone_A" ? "#22c55e" : "#d1d5db"} />
-          </mesh>
-          {/* 标签 */}
-          <Text 
-            position={[0, 0.5, -1.2]} 
-            fontSize={0.3} 
-            color="#000000"
-            anchorX="center"
-            anchorY="middle"
-          >
-            区域A (起点)
-          </Text>
-        </group>
-        
-        {/* Zone B (终点，不可达) */}
-        <group position={[3, 0, 0]}>
-          <mesh position={[0, 0.05, 0]}>
-            <boxGeometry args={[2, 0.1, 2]} />
-            <meshStandardMaterial color="#ef4444" wireframe />
-          </mesh>
-          {/* 标签 */}
-          <Text 
-            position={[0, 0.5, -1.2]} 
-            fontSize={0.25} 
-            color="#dc2626"
-            anchorX="center"
-            anchorY="middle"
-          >
-            区域B (不可达)
-          </Text>
-        </group>
-
-        {/* Agent (方块) */}
-        <group position={[agentLocation === "zone_A" ? -3 : 3, 0.6, 0]}>
-          <mesh>
-            <boxGeometry args={[0.5, 0.5, 0.5]} />
-            <meshStandardMaterial color={sisyphusMode && isHolding ? "#ef4444" : "#fbbf24"} />
-          </mesh>
-          {/* 边框 */}
-          <lineSegments>
-            <edgesGeometry attach="geometry" args={[new THREE.BoxGeometry(0.5, 0.5, 0.5)]} />
-            <lineBasicMaterial attach="material" color="#000000" linewidth={2} />
-          </lineSegments>
-          {/* 标签 */}
-          <Text 
-            position={[0, 0.8, 0]} 
-            fontSize={0.2} 
-            color="#000000"
-            anchorX="center"
-            anchorY="middle"
-          >
-            {sisyphusMode && isHolding ? "Agent 🔥" : "Agent"}
-          </Text>
-        </group>
-
-        {/* Target (目标方块) */}
-        <group position={[3, 0.4, 0]}>
-          <mesh>
-            <boxGeometry args={[0.3, 0.3, 0.3]} />
-            <meshStandardMaterial color="#ef4444" />
-          </mesh>
-          {/* 边框 */}
-          <lineSegments>
-            <edgesGeometry attach="geometry" args={[new THREE.BoxGeometry(0.3, 0.3, 0.3)]} />
-            <lineBasicMaterial attach="material" color="#000000" linewidth={2} />
-          </lineSegments>
-          {/* 标签 */}
-          <Text 
-            position={[0, 0.5, 0]} 
-            fontSize={0.15} 
-            color="#dc2626"
-            anchorX="center"
-            anchorY="middle"
-          >
-            目标
-          </Text>
-        </group>
-
-        <Grid args={[20, 20]} cellColor="#e5e7eb" sectionColor="#9ca3af" />
-      </Canvas>
-
-      {/* 检测机制说明 */}
-      <div className="absolute bottom-4 right-4 z-50 bg-yellow-50 border-2 border-yellow-500 p-4 rounded shadow-lg text-gray-800 text-xs max-w-xs">
-        <div className="font-bold text-yellow-700 mb-2">🔍 检测机制说明:</div>
-        {!sisyphusMode ? (
-          <ul className="list-disc pl-4 space-y-1">
-            <li><strong>后端模式:</strong> 调用真实后端 Watchdog</li>
-            <li><strong>场景设计:</strong> 2个区域 (A可达, B不可达) + 1个目标</li>
-            <li><strong>诱发循环:</strong> Agent会反复尝试 A → B → A → B...</li>
-            <li><strong>检测方法:</strong> 滑动窗口记录最近5次动作签名</li>
-            <li><strong>触发条件:</strong> 5次动作中只有≤2种不同签名</li>
-            <li><strong>预期结果:</strong> 第5步左右触发看门狗报警</li>
-          </ul>
-        ) : (
-          <ul className="list-disc pl-4 space-y-1">
-            <li><strong>西西弗斯模式:</strong> 本地模拟状态循环</li>
-            <li><strong>场景:</strong> 红方块太烫，拿起就必须放下</li>
-            <li><strong>循环:</strong> PICK (拿起) → DROP (放下) → PICK...</li>
-            <li><strong>检测方法:</strong> 记录世界状态哈希 (位置|持有状态)</li>
-            <li><strong>触发条件:</strong> 最近5次状态只有≤2种不同状态</li>
-            <li><strong>预期:</strong> 状态在 "zone_A|holding" 和 "zone_A|empty" 之间循环</li>
-          </ul>
-        )}
+      {/* 后端状态 */}
+      <div className="absolute bottom-4 left-4 z-50 pointer-events-auto">
+        <div className="bg-white/90 backdrop-blur-sm border-2 border-gray-300 rounded-xl p-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${isParsing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`} />
+            <div>
+              <p className="text-sm font-bold text-gray-800">Backend Status</p>
+              <p className="text-xs text-gray-600">127.0.0.1:8001/api/tick</p>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-gray-500">{isParsing ? 'Parsing task...' : 'Ready'}</div>
+          <div className="mt-1 text-xs text-gray-600">
+            Agent: {agentLocation} | Fridge door: {fridgeOpen ? 'open' : 'closed'}
+          </div>
+          <div className="mt-1 text-xs text-gray-600">
+            Hold: {holdingItem || 'empty'}
+          </div>
+        </div>
       </div>
+
+      {/* 3D场景信息 */}
+      <div className="absolute top-4 right-4 z-50 pointer-events-auto w-64">
+        <div className="bg-white/90 backdrop-blur-sm border-2 border-purple-300 rounded-xl p-3 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-purple-600 text-lg">🎮</span>
+            <h3 className="font-bold text-gray-800">3D Game Scene</h3>
+          </div>
+          <p className="text-xs text-gray-600 mb-2">Scene includes:</p>
+          <ul className="text-xs text-gray-600 space-y-1">
+            <li>- Table area (4x2 grid)</li>
+            <li>- Hold area (gold wireframe)</li>
+            <li>- Agent capsule (yellow wireframe)</li>
+            <li>- Fridge area (blue wireframe)</li>
+            <li>- Red cube (table or hold zone)</li>
+            <li>- Grid floor</li>
+          </ul>
+          <p className="text-xs text-gray-500 mt-2">Try "go to fridge" or "pick red cube"</p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+  return (
+    <div className="w-full h-screen relative bg-gradient-to-br from-gray-100 to-gray-300">
+      <ActionTriggerBubble bubble={actionBubble} />
+      <div className="absolute inset-0">{renderEmptyScene()}</div>
+      {renderDashboard()}
     </div>
   )
 }
