@@ -1,4 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react'
+
+// 导入目标解析器
+import { resolveGoalSpec as defaultResolveGoalSpec } from '../mechanics/GoalParser'
 
 /**
  * AgentSystem - reusable core loop
@@ -8,6 +11,7 @@ export function useAgentSystem({
   onTickComplete = () => {},
   getWorldState,
   executeWorldAction,
+  resolveGoalSpec: resolveGoalSpecOverride,
   initialTask = 'Put red cube in fridge',
   backendUrl = 'http://127.0.0.1:8001/api/tick'
 }) {
@@ -48,6 +52,19 @@ export function useAgentSystem({
           nearby_objects: [],
           timestamp: Date.now() / 1000
         }
+    const worldAgent = worldState?.agent || {}
+    const effectiveLocation = worldAgent.location || state.location
+    const effectiveHolding = Object.prototype.hasOwnProperty.call(worldAgent, 'holding')
+      ? worldAgent.holding
+      : state.holding
+
+    // 使用传入的resolveGoalSpec函数，如果没有则使用默认的
+    const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
+    const parsedGoalSpec = typeof goalResolver === 'function'
+      ? goalResolver(userInstruction, state, worldState)
+      : null
+
+    const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
 
     return {
       session_id: sessionIdRef.current,
@@ -55,16 +72,17 @@ export function useAgentSystem({
       step_id: stepCounterRef.current,
       timestamp: Date.now() / 1000,
       agent: {
-        location: state.location,
-        holding: state.holding
+        location: effectiveLocation,
+        holding: effectiveHolding
       },
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
+      goal_spec: goalSpec,
       // P0-2 feed previous action/result back to backend
       last_action: lastAction,
       last_result: lastResult
     }
-  }, [getWorldState, userInstruction, lastAction, lastResult])
+  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult])
 
   const executeAction = useCallback((actionPayload) => {
     console.log('[AgentSystem] Executing:', actionPayload)
@@ -81,14 +99,15 @@ export function useAgentSystem({
       case 'INTERACT': {
         const interactionType = actionPayload.interaction_type || 'NONE'
         const targetItem = actionPayload.target_item
+        let worldExecutionResult = { success: true }
 
         if (executeWorldAction) {
-          executeWorldAction(actionPayload, newAgentState)
+          worldExecutionResult = executeWorldAction(actionPayload, newAgentState) || { success: true }
         }
 
-        if (interactionType === 'PICK' && targetItem) {
+        if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
           newAgentState.holding = targetItem
-        } else if (interactionType === 'PLACE') {
+        } else if (interactionType === 'PLACE' && worldExecutionResult.success) {
           newAgentState.holding = null
         }
         break
@@ -265,3 +284,4 @@ export function useAgentSystemContext() {
   }
   return context
 }
+

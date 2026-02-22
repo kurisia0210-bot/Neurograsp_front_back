@@ -454,7 +454,7 @@ class GoalRegistry:
             low,
         )
         if m:
-            door = self._normalize_item(m.group(1))
+            door = self._normalize_openable_item(m.group(1))
             item = self._normalize_item(m.group(2))
             container = self._normalize_container(m.group(3))
             if door and item and container:
@@ -470,7 +470,7 @@ class GoalRegistry:
 
         m = re.search(r"^\s*open\s+([a-z_ ]+)\s*$", low)
         if m:
-            item = self._normalize_item(m.group(1))
+            item = self._normalize_openable_item(m.group(1))
             if item:
                 dsl = f"open({item})"
                 return GoalSpec(
@@ -483,7 +483,7 @@ class GoalRegistry:
 
         m = re.search(r"^\s*close\s+([a-z_ ]+)\s*$", low)
         if m:
-            item = self._normalize_item(m.group(1))
+            item = self._normalize_openable_item(m.group(1))
             if item:
                 dsl = f"closed({item})"
                 return GoalSpec(
@@ -640,7 +640,7 @@ class GoalRegistry:
                 )
 
         if goal_type == "OPEN":
-            item = str(params.get("item") or "").strip()
+            item = self._normalize_openable_from_value(str(params.get("item") or "").strip())
             if item:
                 dsl = f"open({item})"
                 return GoalSpec(
@@ -652,7 +652,7 @@ class GoalRegistry:
                 )
 
         if goal_type == "CLOSE":
-            item = str(params.get("item") or "").strip()
+            item = self._normalize_openable_from_value(str(params.get("item") or "").strip())
             if item:
                 dsl = f"closed({item})"
                 return GoalSpec(
@@ -677,7 +677,7 @@ class GoalRegistry:
                 )
 
         if goal_type == "OPEN_THEN_PUT_IN":
-            door = str(params.get("door") or "").strip()
+            door = self._normalize_openable_from_value(str(params.get("door") or "").strip())
             item = str(params.get("item") or "").strip()
             container = str(params.get("container") or "").strip()
             if door and item and container:
@@ -709,6 +709,18 @@ class GoalRegistry:
         t = self._normalize_token(token, keep_space=True)
         mapped = self._ITEM_ALIASES.get(t, t.replace(" ", "_"))
         return mapped if mapped in self._ITEMS else None
+
+    def _normalize_openable_item(self, token: str) -> Optional[str]:
+        item = self._normalize_item(token)
+        return self._normalize_openable_from_value(item)
+
+    @staticmethod
+    def _normalize_openable_from_value(item: Optional[str]) -> Optional[str]:
+        if not item:
+            return None
+        if item == "fridge_main":
+            return "fridge_door"
+        return item
 
     def _normalize_container(self, token: str) -> Optional[str]:
         t = self._normalize_token(token, keep_space=True)

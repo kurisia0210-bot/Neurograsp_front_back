@@ -107,6 +107,17 @@ class MockProposer:
                 content=f"MockRule: close {item}.",
             )
 
+        if goal is not None and goal.goal_type in {"PUT_IN", "OPEN_THEN_PUT_IN"}:
+            item = goal.params.get("item", "red_cube")
+            container = goal.params.get("container", "fridge_main")
+            return make_action(
+                obs,
+                type="INTERACT",
+                target_item=container,
+                interaction_type="PLACE",
+                content=f"MockRule: place {item} into {container}.",
+            )
+
         if goal is None and self._looks_like_move_task(obs.global_task):
             return make_action(
                 obs,
@@ -134,6 +145,16 @@ class MockProposer:
                 content=(
                     "Unsupported CLOSE target. "
                     "Use one of: fridge_door, red_cube, half_cube_left, half_cube_right."
+                ),
+            )
+
+        if goal is None and self._looks_like_place_task(obs.global_task):
+            return make_action(
+                obs,
+                type="THINK",
+                content=(
+                    "Unsupported PLACE target. "
+                    "Use: place <item> in <container>, e.g. place red cube in fridge."
                 ),
             )
 
@@ -191,6 +212,11 @@ class MockProposer:
     def _looks_like_close_task(task: str) -> bool:
         text = (task or "").strip().lower()
         return bool(re.search(r"(?:^|\b)close\b", text))
+
+    @staticmethod
+    def _looks_like_place_task(task: str) -> bool:
+        text = (task or "").strip().lower()
+        return bool(re.search(r"(?:^|\b)(?:place|put)\b", text))
 
     async def propose(self, obs: ObservationPayload) -> ActionPayload:
         scripted = self._from_script(obs)

@@ -1,582 +1,360 @@
-// src/playground/AgentPlayground.jsx (重构版 - 使用AgentSystem)
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrthographicCamera, Grid } from '@react-three/drei'
+import { Grid, OrthographicCamera } from '@react-three/drei'
 
-// 导入新的AgentSystem
 import { useAgentSystem } from '../components/game/agent/AgentSystem'
-
-// 导入DoctorAvatar和NotificationBubble
 import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
-
-// 导入GameCube组件
 import { WholeCube } from '../components/game/mechanics/GameCube'
+import {
+  ActionTriggerBubble,
+  executeRegisteredAction
+} from '../components/game/mechanics/ActionRegistry'
+import {
+  AgentBrainDashboard,
+  AgentStatusDisplay
+} from '../components/game/mechanics/AgentBrainDashboard'
+import { HoldBox } from '../components/game/mechanics/HoldBox'
+import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
+import { useWorldStateManager } from '../components/game/mechanics/WorldStateManager'
 
-// ==========================================
-// 🧠 Dashboard (保持不变)
-// ==========================================
-const AgentBrainDashboard = ({ observation, action, isThinking }) => {
-  return (
-    <div className="absolute top-4 right-4 w-96 bg-black/90 text-green-400 p-4 rounded-lg font-mono text-xs shadow-2xl z-50 border border-green-500/30 overflow-hidden">
-      <div className="flex justify-between items-center border-b border-green-500/50 pb-2 mb-2">
-        <h2 className="font-bold text-sm">🧠 COALA Cortex (Kitchen)</h2>
-        <span className={`w-3 h-3 rounded-full ${isThinking ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`}></span>
-      </div>
-      <div className="mb-4">
-        <h3 className="text-gray-400 mb-1">[PERCEPTION]</h3>
-        <pre className="bg-gray-900 p-2 rounded opacity-80 h-32 overflow-y-auto text-[10px] whitespace-pre-wrap">
-          {observation ? JSON.stringify(observation, null, 2) : "Initializing..."}
-        </pre>
-      </div>
-      <div>
-        <h3 className="text-gray-400 mb-1">[INTENT]</h3>
-        <pre className="bg-gray-900 p-2 rounded opacity-80 text-yellow-300 text-[10px] whitespace-pre-wrap">
-          {action ? JSON.stringify(action, null, 2) : "Waiting..."}
-        </pre>
-      </div>
-    </div>
-  )
+const TABLE_HEIGHT = 0.85
+const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
+
+function getVisualTargetPosition(location) {
+  if (location === 'fridge_zone') return [-2, 0, 1]
+  if (location === 'stove_zone') return [2, 0, 1]
+  return DEFAULT_AGENT_POSITION
 }
 
-// ==========================================
-// 🎯 Hold框组件 - 显示当前手持物品
-// ==========================================
-const HoldBox = ({ holdingItem, cubes }) => {
-  if (!holdingItem) {
-    return (
-      <div className="bg-gray-800/80 border-2 border-dashed border-gray-600 rounded-lg p-4 flex flex-col items-center justify-center">
-        <div className="text-gray-400 text-sm mb-2">手持物品</div>
-        <div className="text-gray-500 text-xs">空手</div>
-      </div>
-    )
-  }
-
-  const cube = cubes.find(c => c.id === holdingItem)
-  if (!cube) {
-    return (
-      <div className="bg-gray-800/80 border-2 border-gray-500 rounded-lg p-4 flex flex-col items-center justify-center">
-        <div className="text-gray-300 text-sm mb-2">手持物品</div>
-        <div className="text-gray-400 text-xs">{holdingItem}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-gray-800/80 border-2 border-gray-500 rounded-lg p-4 flex flex-col items-center justify-center">
-      <div className="text-gray-300 text-sm mb-2">手持物品</div>
-      <div className="flex items-center gap-3">
-        <div 
-          className="w-6 h-6 rounded-sm"
-          style={{ backgroundColor: cube.color }}
-        />
-        <div className="text-white font-mono text-sm">{cube.name}</div>
-      </div>
-      <div className="text-gray-400 text-xs mt-2">状态: {cube.state}</div>
-    </div>
-  )
-}
-
-// ==========================================
-// 🎯 手持物品状态管理器
-// ==========================================
-const useHoldingItemManager = (cubes, setCubes) => {
-  // 获取当前手持的方块
-  const holdingCube = cubes.find(cube => cube.state === "in_hand")
-  
-  // 手动拾取方块（用户点击）
-  const pickUpCube = (cubeId) => {
-    setCubes(prevCubes => 
-      prevCubes.map(cube => {
-        if (cube.id === cubeId && cube.state === "on_table") {
-          console.log(`🖱️ 手动拾取: ${cube.name}`)
-          return { ...cube, state: "in_hand", position: [0, -10, 0] }
-        }
-        return cube
-      })
-    )
-  }
-  
-  // 手动放置方块（用户放置）
-  const placeCube = (cubeId, position, newState = "on_table") => {
-    setCubes(prevCubes => 
-      prevCubes.map(cube => {
-        if (cube.id === cubeId && cube.state === "in_hand") {
-          console.log(`🖱️ 手动放置: ${cube.name} -> ${newState}`)
-          return { ...cube, state: newState, position }
-        }
-        return cube
-      })
-    )
-  }
-  
-  // 检查是否正在手持某个方块
-  const isHolding = (cubeId) => {
-    return holdingCube?.id === cubeId
-  }
-  
+function toHistoryEntry(response) {
+  const intent = response?.intent || {}
   return {
-    holdingCube,
-    pickUpCube,
-    placeCube,
-    isHolding
+    key: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    step_id: response?.step_id ?? intent?.step_id ?? null,
+    type: intent.type ?? null,
+    target_poi: intent.target_poi ?? null,
+    target_item: intent.target_item ?? null,
+    interaction_type: intent.interaction_type ?? 'NONE',
+    target_length: intent.target_length ?? null,
+    content: intent.content ?? '',
+    error: response?.error || null
   }
+}
+
+function getBehaviorText(intent) {
+  if (!intent?.type) return 'Action: waiting for next step'
+
+  const type = String(intent.type).toUpperCase()
+  if (type === 'MOVE_TO') {
+    return `Action: move to ${intent.target_poi || 'target'}`
+  }
+  if (type === 'INTERACT') {
+    const interaction = String(intent.interaction_type || 'NONE').toLowerCase()
+    const target = intent.target_item || intent.target_poi || 'target'
+    return `Action: ${interaction} ${target}`
+  }
+  if (type === 'FINISH') {
+    return `Action: finish (${intent.content || 'task completed'})`
+  }
+  if (type === 'SPEAK') {
+    return `Action: speak${intent.content ? ` - ${intent.content}` : ''}`
+  }
+  if (type === 'THINK') {
+    return 'Action: think'
+  }
+  return `Action: ${type.toLowerCase()}`
 }
 
 export function AgentPlayground({ onBack }) {
-  // === 🌍 World State ===
-  const [fridgeOpen, setFridgeOpen] = useState(false)
-  
-  // === 🧊 多颜色方块系统 ===
-  const [cubes, setCubes] = useState([
-    { 
-      id: "red_cube", 
-      name: "红方块", 
-      color: "#ff6b6b", 
-      position: [-0.4, 1.7 + 0.125, -0.5], 
-      state: "on_table",
-      dragHeight: 1.7 + 0.125
-    }
-  ])
-  
-  // === 🗣️ Agent步骤说明 ===
-  const [agentStep, setAgentStep] = useState("等待Agent指令...")
+  const worldStateManager = useWorldStateManager({
+    initialFridgeOpen: false,
+    initialCubes: [
+      {
+        id: 'red_cube',
+        name: 'Red Cube',
+        color: '#ff6b6b',
+        position: [-0.4, 1.7 + 0.125, -0.5],
+        state: 'on_table',
+        dragHeight: 1.7 + 0.125
+      }
+    ]
+  })
+
+  const [behaviorLine, setBehaviorLine] = useState('Action: waiting for next step')
   const [showArrowAnimation, setShowArrowAnimation] = useState(false)
-  const [currentTaskStep, setCurrentTaskStep] = useState(0)
   const [intentHistory, setIntentHistory] = useState([])
-  
-  // 使用手持物品管理器
-  const holdingManager = useHoldingItemManager(cubes, setCubes)
-  const holdingCube = holdingManager.holdingCube
+  const [actionBubble, setActionBubble] = useState({
+    visible: false,
+    status: 'NO_INTENT',
+    message: ''
+  })
+  const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
 
-  // === 🤖 使用AgentSystem ===
+  const triggerArrowAnimation = () => {
+    setShowArrowAnimation(true)
+    setTimeout(() => setShowArrowAnimation(false), 1500)
+  }
+
   const agentSystem = useAgentSystem({
-    initialTask: "Put red cube in fridge",
-    
-    // 添加onTickComplete回调来获取Agent的推理
+    initialTask: 'Put red cube in fridge',
     onTickComplete: (response, observation) => {
-      console.log("🔄 Tick completed")
+      if (!response?.intent) return
 
-      if (response?.intent) {
-        const {
-          type = null,
-          target_poi = null,
-          target_item = null,
-          interaction_type = "NONE",
-          target_length = null,
-          content = ""
-        } = response.intent
+      setIntentHistory((prev) => [...prev, toHistoryEntry(response)].slice(-30))
 
-        const historyEntry = {
-          key: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          step_id: response?.step_id ?? response?.intent?.step_id ?? null,
-          type,
-          target_poi,
-          target_item,
-          interaction_type,
-          target_length,
-          content,
-          error: response?.error || null
-        }
+      const intent = response.intent
+      setBehaviorLine(getBehaviorText(intent))
 
-        setIntentHistory(prev => [...prev, historyEntry].slice(-30))
-      }
-      
-      // 提取Agent的推理内容
-      if (response?.intent?.content) {
-        const agentReasoning = response.intent.content
-        setAgentStep(agentReasoning)
-        
-        // 检测任务步骤变化
-        detectTaskStepChange(agentReasoning)
-      }
+      const preFridgeDoor = observation?.nearby_objects?.find((obj) => obj.id === 'fridge_door')
+      const triggerResult = executeRegisteredAction(intent, {
+        holdingItem: observation?.agent?.holding || null,
+        fridgeOpen: preFridgeDoor?.state === 'open'
+      })
+      setActionBubble({
+        visible: true,
+        status: triggerResult.status,
+        message: triggerResult.message
+      })
     },
-    
-    // 添加onActionExecuted回调来检测任务完成
     onActionExecuted: (action, newState) => {
-      console.log("🎯 Action executed:", action.type, "New state:", newState)
-      
-      // 当动作执行成功时，触发箭头动画
-      if (action.type === "EXECUTE_WORLD_ACTION") {
+      console.log('[AgentPlayground] Action executed:', action?.type, newState)
+      if (action?.type === 'MOVE_TO' || action?.type === 'INTERACT') {
         triggerArrowAnimation()
       }
     },
-    
-    // 获取世界状态的函数
-    getWorldState: (agentState) => {
-      const nearby_objects = []
-
-      // 添加所有方块
-      cubes.forEach(cube => {
-        nearby_objects.push({
-          id: cube.id,
-          name: cube.name,
-          state: cube.state,
-          relation: cube.state === "in_hand" ? "held by agent" : "on the table",
-          color: cube.color
-        })
-      })
-
-      // 2. Fridge Door
-      nearby_objects.push({
-        id: "fridge_door",
-        state: fridgeOpen ? "open" : "closed",
-        relation: "front of agent"
-      })
-
-      // 3. Fridge Main
-      nearby_objects.push({
-        id: "fridge_main",
-        state: "installed",
-        relation: "kitchen appliance"
-      })
-      
-      // 4. Table Surface
-      nearby_objects.push({
-        id: "table_surface", 
-        state: "installed",
-        relation: "support surface"
-      })
-
-      return { nearby_objects }
-    },
-    
-    // 执行世界动作的函数
-    executeWorldAction: (actionPayload, agentState) => {
-      console.log("💪 [World] Executing:", actionPayload)
-      
-      const interactionType = actionPayload.interaction_type || "NONE"
-      const targetItem = actionPayload.target_item
-      
-      switch (interactionType) {
-        case "PICK":
-          // 拾取方块
-          setCubes(prevCubes => 
-            prevCubes.map(cube => {
-              if (cube.id === targetItem && cube.state === "on_table") {
-                console.log(`✅ Picked up ${cube.name}`)
-                return { ...cube, state: "in_hand", position: [0, -10, 0] }
-              }
-              return cube
-            })
-          )
-          break
-          
-        case "PLACE":
-          // 放置方块
-          setCubes(prevCubes => 
-            prevCubes.map(cube => {
-              if (cube.id === targetItem && cube.state === "in_hand") {
-                if (actionPayload.target_location === "fridge_main") {
-                  console.log(`✅ Placed ${cube.name} in fridge`)
-                  return { ...cube, state: "in_fridge", position: [-1.8, 1.2, -0.5] }
-                } else if (actionPayload.target_location === "table_surface") {
-                  console.log(`✅ Placed ${cube.name} on table`)
-                  // 找到空闲的桌子位置
-                  const tablePositions = [
-                    [-0.8, 1.7 + 0.125, -0.5],
-                    [-0.4, 1.7 + 0.125, -0.5],
-                    [0, 1.7 + 0.125, -0.5],
-                    [0.4, 1.7 + 0.125, -0.5]
-                  ]
-                  const occupiedPositions = prevCubes
-                    .filter(c => c.state === "on_table" && c.id !== cube.id)
-                    .map(c => c.position.toString())
-                  const freePosition = tablePositions.find(pos => 
-                    !occupiedPositions.includes(pos.toString())
-                  ) || tablePositions[0]
-                  
-                  return { ...cube, state: "on_table", position: freePosition }
-                }
-              }
-              return cube
-            })
-          )
-          break
-          
-        case "OPEN":
-          if (targetItem === "fridge_door") {
-            setFridgeOpen(true)
-            console.log("✅ Opened fridge door")
-          }
-          break
-          
-        case "CLOSE":
-          if (targetItem === "fridge_door") {
-            setFridgeOpen(false)
-            console.log("✅ Closed fridge door")
-          }
-          break
-          
-        case "NONE":
-          // 向后兼容
-          if (targetItem === "fridge_door") {
-            setFridgeOpen(prev => !prev)
-            console.log("✅ Toggled fridge door")
-          }
-          break
-          
-        default:
-          console.log(`⚠️ Unknown interaction: ${interactionType}`)
-      }
-    }
+    getWorldState: worldStateManager.getWorldState,
+    executeWorldAction: worldStateManager.executeWorldAction
   })
+  const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
 
-  // === 🔄 任务步骤检测和动画触发 ===
-  
-  // 检测任务步骤变化
-  const detectTaskStepChange = (agentReasoning) => {
-    // 简单的关键词检测逻辑
-    const stepKeywords = [
-      "拿起", "pick up", "拿起cube", "拿起红方块",
-      "打开", "open", "打开冰箱", "打开冰箱门",
-      "放入", "place", "放入冰箱", "放入红方块",
-      "关闭", "close", "关闭冰箱", "关闭冰箱门"
-    ]
-    
-    let newStep = currentTaskStep
-    stepKeywords.forEach((keyword, index) => {
-      if (agentReasoning.toLowerCase().includes(keyword.toLowerCase())) {
-        newStep = Math.floor(index / 4) // 每4个关键词一个步骤
-      }
+  useEffect(() => {
+    if (!actionBubble.visible) return
+    const timer = setTimeout(() => {
+      setActionBubble((prev) => ({ ...prev, visible: false }))
+    }, 1400)
+    return () => clearTimeout(timer)
+  }, [actionBubble.visible])
+
+  useEffect(() => {
+    const target = getVisualTargetPosition(agentSystem.agentState.location)
+    const timer = setInterval(() => {
+      setAgentVisualPosition((prev) => {
+        const next = prev.map((v, idx) => v + (target[idx] - v) * 0.18)
+        const dist = Math.hypot(
+          target[0] - next[0],
+          target[1] - next[1],
+          target[2] - next[2]
+        )
+
+        if (dist < 0.02) {
+          clearInterval(timer)
+          return target
+        }
+        return next
+      })
+    }, 16)
+
+    return () => clearInterval(timer)
+  }, [agentSystem.agentState.location])
+
+  const resetActionBubble = () => {
+    setActionBubble({
+      visible: false,
+      status: 'NO_INTENT',
+      message: ''
     })
-    
-    if (newStep !== currentTaskStep) {
-      setCurrentTaskStep(newStep)
-    }
   }
-
-  // 触发箭头动画
-  const triggerArrowAnimation = () => {
-    setShowArrowAnimation(true)
-    
-    // 1.5秒后自动关闭动画（与动画持续时间匹配）
-    setTimeout(() => {
-      setShowArrowAnimation(false)
-    }, 1500)
-  }
-
-  // === 🎨 渲染部分 ===
-  const TABLE_HEIGHT = 0.85
 
   const handleResetAgent = () => {
     agentSystem.resetAgent()
+    worldStateManager.resetWorldState()
     setIntentHistory([])
-  }
-  
-  // 计算Agent位置（用于可视化）
-  const getAgentVisualPosition = () => {
-    const location = agentSystem.agentState.location
-    if (location === "fridge_zone") return [-2, 0, 1]
-    if (location === "stove_zone") return [2, 0, 1]
-    return [0, 0, 2] // table_center
+    setBehaviorLine('Action: waiting for next step')
+    setAgentVisualPosition(getVisualTargetPosition('table_center'))
+    resetActionBubble()
   }
 
-  // 获取DoctorAvatar状态
+  const moveAgentTo = (targetPoi, label) => {
+    const intent = {
+      type: 'MOVE_TO',
+      target_poi: targetPoi,
+      content: `Manual move to ${targetPoi}`
+    }
+
+    const triggerResult = executeRegisteredAction(intent, {
+      onMove: () => {
+        agentSystem.executeAction(intent)
+      }
+    })
+
+    setActionBubble({
+      visible: true,
+      status: triggerResult.status,
+      message: triggerResult.message
+    })
+    setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
+  }
+
   const getDoctorAvatarStatus = () => {
-    if (agentSystem.isThinking) return "thinking"
-    if (agentSystem.agentState.holding) return "active"
-    return "idle"
+    if (agentSystem.isThinking) return 'thinking'
+    if (agentSystem.agentState.holding) return 'active'
+    return 'idle'
   }
 
   return (
     <div className="w-full h-full relative bg-[#1e1e1e]">
-      {/* 🔙 返回主页面按钮 - 移到右上角避免重叠 */}
-      {onBack && (
-        <button 
-          onClick={onBack} 
-          className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur text-gray-700 rounded-full shadow-sm hover:bg-gray-100 font-bold transition-all"
-        >
-          <span>⬅️</span> 返回主页面
-        </button>
-      )}
-      
-      <AgentBrainDashboard 
-        observation={agentSystem.lastObservation} 
-        action={agentSystem.lastAction} 
-        isThinking={agentSystem.isThinking} 
+      {onBack && <BackButton onBack={onBack} />}
+
+      <AgentBrainDashboard
+        observation={agentSystem.lastObservation}
+        action={agentSystem.lastAction}
+        isThinking={agentSystem.isThinking}
       />
-      
-      {/* 顶部通知气泡 - 显示Agent的具体步骤 */}
+
       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
-        <NotificationBubble 
-          text={agentStep}
-          subText="Agent正在执行任务..."
+        <NotificationBubble
+          text={taskLine}
+          subText={behaviorLine}
           style={{ transform: 'translateY(-20px)' }}
           showArrowAnimation={showArrowAnimation}
         />
       </div>
-      
-      {/* 底部控制栏 */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3 w-96">
-        <div className="flex gap-2 bg-black/50 p-2 rounded backdrop-blur-md border border-gray-600">
-          <input
-            type="text"
-            value={agentSystem.userInstruction}
-            onChange={(e) => agentSystem.setUserInstruction(e.target.value)}
-            className="flex-1 bg-transparent text-white outline-none font-mono text-sm"
-            placeholder="输入任务，例如: Put red cube in fridge"
-          />
-        </div>
-        <div className="flex gap-4 justify-center">
-          <button 
-            onClick={agentSystem.tick} 
-            disabled={agentSystem.isThinking || agentSystem.autoLoop} 
-            className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow-lg disabled:opacity-50 hover:bg-blue-700 transition-colors"
-          >
-            STEP
-          </button>
-          <button 
-            onClick={agentSystem.toggleAutoLoop} 
-            className={`px-6 py-2 font-bold rounded text-white shadow-lg transition-colors ${agentSystem.autoLoop ? 'bg-red-600 animate-pulse hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
-          >
-            {agentSystem.autoLoop ? "STOP" : "AUTO"}
-          </button>
-          <button 
-            onClick={handleResetAgent}
-            className="px-6 py-2 bg-gray-600 text-white font-bold rounded shadow-lg hover:bg-gray-700 transition-colors"
-          >
-            RESET
-          </button>
-          {/* 测试箭头动画按钮 */}
-          <button 
-            onClick={() => triggerArrowAnimation()}
-            className="px-6 py-2 bg-purple-600 text-white font-bold rounded shadow-lg hover:bg-purple-700 transition-colors"
-          >
-            测试箭头
-          </button>
-        </div>
+
+      <ActionTriggerBubble bubble={actionBubble} />
+
+      <AgentControls
+        onTick={agentSystem.tick}
+        onToggleAutoLoop={agentSystem.toggleAutoLoop}
+        onReset={handleResetAgent}
+        onTestArrow={triggerArrowAnimation}
+        isThinking={agentSystem.isThinking}
+        autoLoop={agentSystem.autoLoop}
+        userInstruction={agentSystem.userInstruction}
+        setUserInstruction={agentSystem.setUserInstruction}
+      />
+
+      <div className="absolute top-[52%] left-[18%] z-50">
+        <button
+          onClick={() => moveAgentTo('fridge_zone', 'fridge')}
+          disabled={agentSystem.isThinking}
+          className="px-3 py-1.5 bg-cyan-600/90 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
+        >
+          Go to Fridge
+        </button>
       </div>
 
-      {/* 3D场景 */}
+      <div className="absolute top-[63%] left-[52%] z-50">
+        <button
+          onClick={() => moveAgentTo('table_center', 'table')}
+          disabled={agentSystem.isThinking}
+          className="px-3 py-1.5 bg-slate-700/90 hover:bg-slate-600 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
+        >
+          Go to Table
+        </button>
+      </div>
+
       <Canvas>
-        <OrthographicCamera makeDefault position={[20, 20, 20]} zoom={45} onUpdate={c => c.lookAt(0, 0.5, 0)} />
+        <OrthographicCamera
+          makeDefault
+          position={[20, 20, 20]}
+          zoom={45}
+          onUpdate={(c) => c.lookAt(0, 0.5, 0)}
+        />
         <ambientLight intensity={0.7} />
         <directionalLight position={[-5, 10, 5]} intensity={1.2} />
-        
-        {/* 桌子 */}
+
         <mesh position={[0, TABLE_HEIGHT / 2, 0]}>
           <boxGeometry args={[4, TABLE_HEIGHT, 2]} />
           <meshStandardMaterial color="#636e72" />
         </mesh>
-        
-        {/* Agent角色 - 保持原来的胶囊体 */}
-        <group position={getAgentVisualPosition()}>
+
+        <group position={agentVisualPosition}>
           <mesh position={[0, 1, 0]}>
             <capsuleGeometry args={[0.3, 1, 4]} />
             <meshStandardMaterial color="yellow" wireframe />
           </mesh>
         </group>
-        
-        {/* 冰箱 */}
+
         <group position={[-3, 0, -0.5]}>
           <mesh position={[0, 1, 0]}>
             <boxGeometry args={[1, 2, 1]} />
             <meshStandardMaterial color="#74b9ff" wireframe={true} transparent={true} opacity={0.8} />
           </mesh>
-          <mesh position={[0.5, 1, 0.51]} rotation={[0, fridgeOpen ? 2.0 : 0, 0]}>
+          <mesh
+            position={[0.5, 1, 0.51]}
+            rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
+            onClick={worldStateManager.toggleFridgeDoor}
+          >
             <mesh position={[-0.5, 0, 0]}>
               <boxGeometry args={[1, 2, 0.05]} />
-              <meshStandardMaterial color={fridgeOpen ? "#74b9ff" : "#b2bec3"} transparent={true} opacity={0.7} />
+              <meshStandardMaterial
+                color={worldStateManager.fridgeOpen ? '#74b9ff' : '#b2bec3'}
+                transparent={true}
+                opacity={0.7}
+              />
             </mesh>
           </mesh>
         </group>
-        
-        {/* 多颜色方块 - 使用GameCube组件 */}
-        {cubes.map(cube => {
-          if (cube.state === "in_hand") {
-            // 手持状态不渲染在场景中
-            return null
-          }
-          
-          return (
-            <WholeCube
-              key={cube.id}
-              position={cube.position}
-              dragHeight={cube.dragHeight}
-              onDrag={(newPos) => {
-                // 手动拖动更新位置
-                setCubes(prev => prev.map(c => 
-                  c.id === cube.id ? { ...c, position: newPos } : c
-                ))
-              }}
-              onPickUp={() => {
-                // 用户手动拾取方块
-                holdingManager.pickUpCube(cube.id)
-              }}
-              onPlace={() => {
-                // 用户手动放置方块
-                // 获取当前位置
-                const currentPos = cube.position
-                // 检查是否在冰箱区域
-                const inFridgeZone = 
-                  Math.abs(currentPos[0] - (-3)) < 0.5 && 
-                  Math.abs(currentPos[2] - (-0.5)) < 0.5
-                
-                if (inFridgeZone) {
-                  // 放置到冰箱
-                  holdingManager.placeCube(cube.id, [-1.8, 1.2, -0.5], "in_fridge")
-                } else {
-                  // 放置到桌子
-                  holdingManager.placeCube(cube.id, currentPos, "on_table")
-                }
-              }}
-              slicingZonePos={[-3, 0, -0.5]} // 冰箱位置
-              slicingZoneSize={[1, 1]} // 冰箱大小
-            />
-          )
-        })}
-        
-        {/* 网格 */}
+
+        {worldStateManager.cubes.map((cube) => (
+          <WholeCube
+            key={cube.id}
+            position={cube.position}
+            dragHeight={cube.dragHeight}
+            onDrag={(newPos) => {
+              const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
+              if (!Array.isArray(nextPosition)) return
+              worldStateManager.setCubes((prev) =>
+                prev.map((c) => (c.id === cube.id ? { ...c, position: nextPosition } : c))
+              )
+            }}
+            onPickUp={() => {
+              worldStateManager.pickUpCube(cube.id)
+            }}
+            onPlace={() => {
+              const currentPos = cube.position
+              const inFridgeZone =
+                Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
+
+              if (inFridgeZone) {
+                worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
+              } else {
+                worldStateManager.placeCube(cube.id, currentPos, 'on_table')
+              }
+            }}
+            slicingZonePos={[-3, 0, -0.5]}
+            slicingZoneSize={[1, 1]}
+          />
+        ))}
+
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
-      
-      {/* Hold框 - 显示当前手持物品（放在状态显示下方） */}
+
       <div className="absolute top-32 left-4 z-50 w-48">
-        <HoldBox 
-          holdingItem={holdingCube?.id}
-          cubes={cubes}
-        />
+        <HoldBox holdingItem={worldStateManager.holdingCube?.id} cubes={worldStateManager.cubes} />
       </div>
-      
-      {/* DoctorAvatar - 作为2D UI元素放在Canvas外部 */}
-      <div 
+
+      <div
         className="absolute z-50"
         style={{
-          left: '50%',
-          top: '50%',
-          transform: `translate(${getAgentVisualPosition()[0] * 50 + 50}px, ${-getAgentVisualPosition()[2] * 50 + 50}px)`,
+          right: '20px',
+          bottom: '20px',
           width: '120px',
           height: '120px'
         }}
       >
-        <DoctorAvatar 
-          status={getDoctorAvatarStatus()}
-          disableEyeTracking={false}
-        />
-      </div>
-      
-      {/* 状态显示 */}
-      <div className="absolute top-4 left-4 z-50 bg-black/80 text-green-400 p-3 rounded-lg font-mono text-xs max-w-xs">
-        <div className="flex items-center gap-2 mb-2">
-          <span className={`w-2 h-2 rounded-full ${agentSystem.isThinking ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`}></span>
-          <span className="font-bold">Agent 状态</span>
-        </div>
-        <div className="text-gray-300 text-[10px]">
-          <div>位置: {agentSystem.agentState.location}</div>
-          <div>手持: {agentSystem.agentState.holding || "空手"}</div>
-          <div>任务: {agentSystem.userInstruction}</div>
-          <div>模式: {agentSystem.autoLoop ? "自动" : "手动"}</div>
-          <div>Avatar状态: {getDoctorAvatarStatus()}</div>
-          {agentSystem.lastAction && (
-            <div className="mt-2 text-yellow-300">
-              最后动作: {agentSystem.lastAction.type}
-            </div>
-          )}
-        </div>
+        <DoctorAvatar status={getDoctorAvatarStatus()} disableEyeTracking={false} />
       </div>
 
-      {/* 左下角 History：记录每次 intent 的关键字段 */}
+      <AgentStatusDisplay
+        agentState={agentSystem.agentState}
+        userInstruction={agentSystem.userInstruction}
+        isThinking={agentSystem.isThinking}
+        autoLoop={agentSystem.autoLoop}
+        lastAction={agentSystem.lastAction}
+      />
+
       <div className="absolute bottom-4 left-4 z-50 w-[28rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
         <div className="flex items-center justify-between mb-2">
           <div className="font-bold text-green-300">History ({intentHistory.length})</div>
@@ -593,10 +371,8 @@ export function AgentPlayground({ onBack }) {
           ) : (
             intentHistory.map((entry, idx) => (
               <div key={entry.key} className="bg-gray-900/80 border border-gray-700 rounded p-2">
-                  <div className="text-[10px] text-gray-400 mb-1">
-                    #{idx + 1} step={entry.step_id ?? "-"}
-                  </div>
-                {entry.error && entry.error.error_code !== "OK" && (
+                <div className="text-[10px] text-gray-400 mb-1">#{idx + 1} step={entry.step_id ?? '-'}</div>
+                {entry.error && entry.error.error_code !== 'OK' && (
                   <div className="text-[10px] mb-1 text-red-300">
                     error={entry.error.error_code} ({entry.error.module}/{entry.error.severity})
                   </div>
