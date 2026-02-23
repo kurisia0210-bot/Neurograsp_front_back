@@ -19,8 +19,9 @@ const CUBE_POS_TABLE = [-0.4, EFFECTIVE_HEIGHT + 0.125, -0.5]
 const CUBE_POS_HAND = [1.3, 1.2, 0.4]
 const CUBE_POS_FRIDGE = [-1.8, 1.2, -0.5]
 const DEFAULT_SURFACE_COLORS = {
-  wall: '#edf3f7',
-  floor: '#dcd7cf',
+  wallMain: '#f8dec2',
+  wallTest: '#ffc697',
+  floor: '#8199aa',
   fridge: '#dfe6e9'
 }
 
@@ -208,29 +209,52 @@ function RawEdgeOverlay({ enabled }) {
   return null
 }
 
+function normalizeHexColor(value, fallback) {
+  const raw = String(value || '').trim()
+  const shortHex = /^#([0-9a-fA-F]{3})$/
+  const longHex = /^#([0-9a-fA-F]{6})$/
+  if (longHex.test(raw)) return raw.toLowerCase()
+  if (shortHex.test(raw)) {
+    const m = raw.slice(1)
+    return `#${m[0]}${m[0]}${m[1]}${m[1]}${m[2]}${m[2]}`.toLowerCase()
+  }
+  return fallback
+}
+
 export function Playground({ onBack }) {
   const [fridgeDoorOpen, setFridgeDoorOpen] = useState(false)
   const [cubeState, setCubeState] = useState('on_table')
   const [rawColorMode, setRawColorMode] = useState(false)
   const [surfaceColors, setSurfaceColors] = useState(DEFAULT_SURFACE_COLORS)
-  const [paintTarget, setPaintTarget] = useState('wall')
-  const [paintColor, setPaintColor] = useState(DEFAULT_SURFACE_COLORS.wall)
+  const [wallMainHex, setWallMainHex] = useState(DEFAULT_SURFACE_COLORS.wallMain)
+  const [wallTestHex, setWallTestHex] = useState(DEFAULT_SURFACE_COLORS.wallTest)
+  const [floorHex, setFloorHex] = useState(DEFAULT_SURFACE_COLORS.floor)
+  const [fridgeHex, setFridgeHex] = useState(DEFAULT_SURFACE_COLORS.fridge)
   const [showColorDebugger, setShowColorDebugger] = useState(false)
   const lighting = usePlaygroundLightingSettings()
 
-  const applyPaintColor = () => {
-    setSurfaceColors((prev) => {
-      if (paintTarget === 'all') {
-        return { wall: paintColor, floor: paintColor, fridge: paintColor }
-      }
-      return { ...prev, [paintTarget]: paintColor }
-    })
+  const applyHexColor = (key, value) => {
+    setSurfaceColors((prev) => ({
+      ...prev,
+      [key]: normalizeHexColor(value, prev[key])
+    }))
+  }
+
+  const applyAllHexColors = () => {
+    setSurfaceColors((prev) => ({
+      wallMain: normalizeHexColor(wallMainHex, prev.wallMain),
+      wallTest: normalizeHexColor(wallTestHex, prev.wallTest),
+      floor: normalizeHexColor(floorHex, prev.floor),
+      fridge: normalizeHexColor(fridgeHex, prev.fridge)
+    }))
   }
 
   const resetSurfaceColors = () => {
     setSurfaceColors(DEFAULT_SURFACE_COLORS)
-    setPaintTarget('wall')
-    setPaintColor(DEFAULT_SURFACE_COLORS.wall)
+    setWallMainHex(DEFAULT_SURFACE_COLORS.wallMain)
+    setWallTestHex(DEFAULT_SURFACE_COLORS.wallTest)
+    setFloorHex(DEFAULT_SURFACE_COLORS.floor)
+    setFridgeHex(DEFAULT_SURFACE_COLORS.fridge)
   }
 
   const cubePosition =
@@ -258,34 +282,76 @@ export function Playground({ onBack }) {
             <span>Raw Color Mode</span>
             <input type="checkbox" checked={rawColorMode} onChange={(e) => setRawColorMode(e.target.checked)} />
           </label>
-          <label className="flex items-center justify-between gap-2 mb-2">
-            <span>Target</span>
-            <select
-              value={paintTarget}
-              onChange={(e) => setPaintTarget(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded bg-white text-gray-700"
-            >
-              <option value="wall">Wall</option>
-              <option value="floor">Floor</option>
-              <option value="fridge">Fridge</option>
-              <option value="all">All</option>
-            </select>
-          </label>
-          <label className="flex items-center justify-between gap-2 mb-2">
-            <span>Paint Color</span>
-            <input
-              type="color"
-              value={paintColor}
-              onChange={(e) => setPaintColor(e.target.value)}
-              className="w-12 h-6 bg-transparent border border-gray-300 rounded"
-            />
-          </label>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-1">Main Wall HEX (With Window)</div>
+            <div className="flex items-center gap-2">
+              <input type="color" value={wallMainHex} onChange={(e) => setWallMainHex(e.target.value)} className="w-10 h-7 border border-gray-300 rounded" />
+              <input
+                type="text"
+                value={wallMainHex}
+                onChange={(e) => setWallMainHex(e.target.value)}
+                className="flex-1 px-2 py-1 border border-gray-300 rounded font-mono"
+                placeholder="#edf3f7"
+              />
+              <button onClick={() => applyHexColor('wallMain', wallMainHex)} className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600">
+                Apply
+              </button>
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-1">Test Wall HEX (No Window)</div>
+            <div className="flex items-center gap-2">
+              <input type="color" value={wallTestHex} onChange={(e) => setWallTestHex(e.target.value)} className="w-10 h-7 border border-gray-300 rounded" />
+              <input
+                type="text"
+                value={wallTestHex}
+                onChange={(e) => setWallTestHex(e.target.value)}
+                className="flex-1 px-2 py-1 border border-gray-300 rounded font-mono"
+                placeholder="#edf3f7"
+              />
+              <button onClick={() => applyHexColor('wallTest', wallTestHex)} className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600">
+                Apply
+              </button>
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-1">Floor HEX</div>
+            <div className="flex items-center gap-2">
+              <input type="color" value={floorHex} onChange={(e) => setFloorHex(e.target.value)} className="w-10 h-7 border border-gray-300 rounded" />
+              <input
+                type="text"
+                value={floorHex}
+                onChange={(e) => setFloorHex(e.target.value)}
+                className="flex-1 px-2 py-1 border border-gray-300 rounded font-mono"
+                placeholder="#dcd7cf"
+              />
+              <button onClick={() => applyHexColor('floor', floorHex)} className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600">
+                Apply
+              </button>
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-1">Fridge HEX</div>
+            <div className="flex items-center gap-2">
+              <input type="color" value={fridgeHex} onChange={(e) => setFridgeHex(e.target.value)} className="w-10 h-7 border border-gray-300 rounded" />
+              <input
+                type="text"
+                value={fridgeHex}
+                onChange={(e) => setFridgeHex(e.target.value)}
+                className="flex-1 px-2 py-1 border border-gray-300 rounded font-mono"
+                placeholder="#dfe6e9"
+              />
+              <button onClick={() => applyHexColor('fridge', fridgeHex)} className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600">
+                Apply
+              </button>
+            </div>
+          </div>
           <div className="flex gap-2 mb-2">
             <button
-              onClick={applyPaintColor}
+              onClick={applyAllHexColors}
               className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600"
             >
-              Apply
+              Apply All
             </button>
             <button
               onClick={resetSurfaceColors}
@@ -301,7 +367,7 @@ export function Playground({ onBack }) {
             </button>
           </div>
           <div className="text-[11px] text-gray-500">
-            Current: wall {surfaceColors.wall} / floor {surfaceColors.floor} / fridge {surfaceColors.fridge}
+            Current: mainWall {surfaceColors.wallMain} / testWall {surfaceColors.wallTest} / floor {surfaceColors.floor} / fridge {surfaceColors.fridge}
           </div>
         </div>
 
@@ -342,9 +408,9 @@ export function Playground({ onBack }) {
         <RawEdgeOverlay enabled={rawColorMode} />
 
         <Floor width={12} depth={12} color={surfaceColors.floor} />
-        <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color={surfaceColors.wall} />
-        <Wall position={[0, 2.5, -2.5]} hasWindow={true} color={surfaceColors.wall} />
-        <WallColorDebugger color={surfaceColors.wall} visible={showColorDebugger} />
+        <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color={surfaceColors.wallTest} />
+        <Wall position={[0, 2.5, -2.5]} hasWindow={true} color={surfaceColors.wallMain} />
+        <WallColorDebugger color={surfaceColors.wallMain} visible={showColorDebugger} />
 
         <Table position={[0, 0, -1.68]} scale={[1.2, 1.2, 1.44]} />
         <InteractiveFridge

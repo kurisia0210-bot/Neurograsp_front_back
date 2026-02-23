@@ -51,6 +51,18 @@ export const DEFAULT_PLAYGROUND_LIGHTING = {
     targetX: 0.6,
     targetY: 1.95,
     targetZ: -0.05
+  },
+  wall: {
+    enabled: true,
+    color: '#ebff2f',
+    intensity: 2.65,
+    // Directional light from +X to -X
+    posX: 4.65,
+    posY: 3.1,
+    posZ: 0.0,
+    targetX: -3.0,
+    targetY: 2.0,
+    targetZ: 0.0
   }
 }
 
@@ -107,6 +119,36 @@ function SpotSection({ title, description, config, onUpdate }) {
   )
 }
 
+function DirectionalSection({ title, description, config, onUpdate }) {
+  return (
+    <div className="mb-3 border-t border-gray-200 pt-2">
+      <div className="font-semibold mb-2">{title}</div>
+      <div className="text-xs text-gray-500 mb-2">{description}</div>
+      <label className="flex items-center justify-between mb-2">
+        <span>Enabled</span>
+        <input type="checkbox" checked={config.enabled} onChange={(e) => onUpdate('enabled', e.target.checked)} />
+      </label>
+      <label className="flex items-center justify-between gap-2 mb-2">
+        <span>Color</span>
+        <input
+          type="color"
+          value={config.color}
+          onChange={(e) => onUpdate('color', e.target.value)}
+          className="w-12 h-6 bg-transparent border border-gray-300 rounded"
+        />
+      </label>
+
+      <Slider label="Intensity" value={config.intensity} min={0} max={5} step={0.05} onChange={(v) => onUpdate('intensity', v)} />
+      <Slider label="Pos X" value={config.posX} min={-5} max={5} step={0.05} onChange={(v) => onUpdate('posX', v)} />
+      <Slider label="Pos Y" value={config.posY} min={-1} max={5} step={0.05} onChange={(v) => onUpdate('posY', v)} />
+      <Slider label="Pos Z" value={config.posZ} min={-5} max={5} step={0.05} onChange={(v) => onUpdate('posZ', v)} />
+      <Slider label="Target X" value={config.targetX} min={-5} max={5} step={0.05} onChange={(v) => onUpdate('targetX', v)} />
+      <Slider label="Target Y" value={config.targetY} min={-1} max={5} step={0.05} onChange={(v) => onUpdate('targetY', v)} />
+      <Slider label="Target Z" value={config.targetZ} min={-5} max={5} step={0.05} onChange={(v) => onUpdate('targetZ', v)} />
+    </div>
+  )
+}
+
 function SpotDebugger({ config, showHelper, helperColor = '#f59e0b', markerColor = '#06b6d4' }) {
   const { scene } = useThree()
   const lightRef = useRef(null)
@@ -157,14 +199,80 @@ function SpotDebugger({ config, showHelper, helperColor = '#f59e0b', markerColor
         distance={config.distance}
         decay={config.decay}
       />
-      <mesh position={[config.posX, config.posY, config.posZ]}>
-        <sphereGeometry args={[0.05, 10, 10]} />
-        <meshBasicMaterial color={helperColor} toneMapped={false} />
-      </mesh>
-      <mesh position={[config.targetX, config.targetY, config.targetZ]}>
-        <sphereGeometry args={[0.04, 10, 10]} />
-        <meshBasicMaterial color={markerColor} toneMapped={false} />
-      </mesh>
+      {showHelper && (
+        <>
+          <mesh position={[config.posX, config.posY, config.posZ]}>
+            <sphereGeometry args={[0.05, 10, 10]} />
+            <meshBasicMaterial color={helperColor} toneMapped={false} />
+          </mesh>
+          <mesh position={[config.targetX, config.targetY, config.targetZ]}>
+            <sphereGeometry args={[0.04, 10, 10]} />
+            <meshBasicMaterial color={markerColor} toneMapped={false} />
+          </mesh>
+        </>
+      )}
+    </>
+  )
+}
+
+function DirectionalDebugger({ config, showHelper, helperColor = '#a855f7', markerColor = '#e879f9' }) {
+  const { scene } = useThree()
+  const lightRef = useRef(null)
+  const helperRef = useRef(null)
+  const targetRef = useMemo(() => new THREE.Object3D(), [])
+
+  useEffect(() => {
+    if (!config.enabled) return undefined
+    scene.add(targetRef)
+    return () => scene.remove(targetRef)
+  }, [config.enabled, scene, targetRef])
+
+  useEffect(() => {
+    targetRef.position.set(config.targetX, config.targetY, config.targetZ)
+    targetRef.updateMatrixWorld()
+    if (lightRef.current) {
+      lightRef.current.target = targetRef
+      lightRef.current.target.updateMatrixWorld()
+    }
+  }, [config.targetX, config.targetY, config.targetZ, targetRef])
+
+  useEffect(() => {
+    if (!config.enabled || !showHelper || !lightRef.current) return undefined
+    const helper = new THREE.DirectionalLightHelper(lightRef.current, 0.5, helperColor)
+    helperRef.current = helper
+    scene.add(helper)
+    return () => {
+      scene.remove(helper)
+      helperRef.current = null
+    }
+  }, [config.enabled, helperColor, scene, showHelper])
+
+  useFrame(() => {
+    if (helperRef.current) helperRef.current.update()
+  })
+
+  if (!config.enabled) return null
+
+  return (
+    <>
+      <directionalLight
+        ref={lightRef}
+        position={[config.posX, config.posY, config.posZ]}
+        color={config.color}
+        intensity={config.intensity}
+      />
+      {showHelper && (
+        <>
+          <mesh position={[config.posX, config.posY, config.posZ]}>
+            <sphereGeometry args={[0.05, 10, 10]} />
+            <meshBasicMaterial color={helperColor} toneMapped={false} />
+          </mesh>
+          <mesh position={[config.targetX, config.targetY, config.targetZ]}>
+            <sphereGeometry args={[0.04, 10, 10]} />
+            <meshBasicMaterial color={markerColor} toneMapped={false} />
+          </mesh>
+        </>
+      )}
     </>
   )
 }
@@ -237,12 +345,19 @@ export function PlaygroundLightingPanel({ lighting }) {
         config={settings.accent}
         onUpdate={(field, value) => updateSpotField('accent', field, value)}
       />
+      <DirectionalSection
+        title="D. WallLight"
+        description='Directional light from +X to -X for non-window wall testing.'
+        config={settings.wall}
+        onUpdate={(field, value) => updateSpotField('wall', field, value)}
+      />
     </>
   )
 }
 
-export function PlaygroundLightingRig({ lighting, rawColorMode }) {
+export function PlaygroundLightingRig({ lighting, rawColorMode, showHelperOverride = null }) {
   const { settings } = lighting
+  const showHelper = showHelperOverride == null ? settings.showHelper : showHelperOverride
 
   if (rawColorMode) return null
 
@@ -252,21 +367,27 @@ export function PlaygroundLightingRig({ lighting, rawColorMode }) {
       {settings.useBaseLighting && <GameLighting />}
       <SpotDebugger
         config={settings.key}
-        showHelper={settings.showHelper}
+        showHelper={showHelper}
         helperColor="#f59e0b"
         markerColor="#06b6d4"
       />
       <SpotDebugger
         config={settings.fill}
-        showHelper={settings.showHelper}
+        showHelper={showHelper}
         helperColor="#60a5fa"
         markerColor="#22d3ee"
       />
       <SpotDebugger
         config={settings.accent}
-        showHelper={settings.showHelper}
+        showHelper={showHelper}
         helperColor="#f97316"
         markerColor="#fb7185"
+      />
+      <DirectionalDebugger
+        config={settings.wall}
+        showHelper={showHelper}
+        helperColor="#a855f7"
+        markerColor="#e879f9"
       />
     </>
   )
