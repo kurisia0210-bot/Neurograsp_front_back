@@ -3,7 +3,11 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
 import { GameCamera } from '../components/game/GameCamera'
-import { GameLighting } from '../components/ui/GameLighting'
+import {
+  PlaygroundLightingPanel,
+  PlaygroundLightingRig,
+  usePlaygroundLightingSettings
+} from '../components/ui/PlaygroundLightingModule'
 import { Floor } from '../components/Floor'
 import { Wall } from '../components/Wall'
 import { Table } from '../components/Table'
@@ -14,9 +18,23 @@ const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2
 const CUBE_POS_TABLE = [-0.4, EFFECTIVE_HEIGHT + 0.125, -0.5]
 const CUBE_POS_HAND = [1.3, 1.2, 0.4]
 const CUBE_POS_FRIDGE = [-1.8, 1.2, -0.5]
+const DEFAULT_SURFACE_COLORS = {
+  wall: '#edf3f7',
+  floor: '#dcd7cf',
+  fridge: '#dfe6e9'
+}
 
-function InteractiveFridge({ position, isOpen, onToggle }) {
+function shadeHex(hex, factor) {
+  const c = new THREE.Color(hex)
+  c.r = Math.min(1, Math.max(0, c.r * factor))
+  c.g = Math.min(1, Math.max(0, c.g * factor))
+  c.b = Math.min(1, Math.max(0, c.b * factor))
+  return `#${c.getHexString()}`
+}
+
+function InteractiveFridge({ position, isOpen, onToggle, color = DEFAULT_SURFACE_COLORS.fridge }) {
   const doorGroupRef = useRef(null)
+  const doorColor = isOpen ? shadeHex(color, 0.8) : color
 
   useFrame((_, delta) => {
     if (!doorGroupRef.current) return
@@ -28,7 +46,7 @@ function InteractiveFridge({ position, isOpen, onToggle }) {
     <group position={position}>
       <mesh position={[0, 1, 0]}>
         <boxGeometry args={[1, 2, 1]} />
-        <meshStandardMaterial color="#dfe6e9" />
+        <meshStandardMaterial color={color} />
       </mesh>
 
       <group
@@ -47,7 +65,7 @@ function InteractiveFridge({ position, isOpen, onToggle }) {
       >
         <mesh position={[-0.5, 0, 0]}>
           <boxGeometry args={[1, 2, 0.05]} />
-          <meshStandardMaterial color={isOpen ? '#b2bec3' : '#dfe6e9'} />
+          <meshStandardMaterial color={doorColor} />
         </mesh>
         <mesh position={[-0.9, 0, 0.05]}>
           <boxGeometry args={[0.05, 0.4, 0.05]} />
@@ -190,107 +208,30 @@ function RawEdgeOverlay({ enabled }) {
   return null
 }
 
-function TableLightDebugger({
-  enabled,
-  color,
-  intensity,
-  angleDeg,
-  penumbra,
-  distance,
-  decay,
-  posX,
-  posY,
-  posZ,
-  targetX,
-  targetY,
-  targetZ,
-  showHelper
-}) {
-  const { scene } = useThree()
-  const lightRef = useRef(null)
-  const helperRef = useRef(null)
-  const targetRef = useRef(new THREE.Object3D())
-
-  useEffect(() => {
-    if (!enabled) return undefined
-    scene.add(targetRef.current)
-    return () => {
-      scene.remove(targetRef.current)
-    }
-  }, [enabled, scene])
-
-  useEffect(() => {
-    targetRef.current.position.set(targetX, targetY, targetZ)
-    targetRef.current.updateMatrixWorld()
-    if (lightRef.current) {
-      lightRef.current.target = targetRef.current
-      lightRef.current.target.updateMatrixWorld()
-    }
-  }, [targetX, targetY, targetZ])
-
-  useEffect(() => {
-    if (!enabled || !showHelper || !lightRef.current) return undefined
-    const helper = new THREE.SpotLightHelper(lightRef.current, '#f59e0b')
-    helperRef.current = helper
-    scene.add(helper)
-    return () => {
-      scene.remove(helper)
-      helperRef.current = null
-    }
-  }, [enabled, showHelper, scene])
-
-  useFrame(() => {
-    if (helperRef.current) helperRef.current.update()
-  })
-
-  if (!enabled) return null
-
-  return (
-    <>
-      <spotLight
-        ref={lightRef}
-        position={[posX, posY, posZ]}
-        color={color}
-        intensity={intensity}
-        angle={THREE.MathUtils.degToRad(angleDeg)}
-        penumbra={penumbra}
-        distance={distance}
-        decay={decay}
-        castShadow
-      />
-      <mesh position={[posX, posY, posZ]}>
-        <sphereGeometry args={[0.05, 10, 10]} />
-        <meshBasicMaterial color="#f59e0b" toneMapped={false} />
-      </mesh>
-      <mesh position={[targetX, targetY, targetZ]}>
-        <sphereGeometry args={[0.04, 10, 10]} />
-        <meshBasicMaterial color="#06b6d4" toneMapped={false} />
-      </mesh>
-    </>
-  )
-}
-
 export function Playground({ onBack }) {
   const [fridgeDoorOpen, setFridgeDoorOpen] = useState(false)
   const [cubeState, setCubeState] = useState('on_table')
-  const [debugColor, setDebugColor] = useState('#edf3f7')
-  const [showColorDebugger, setShowColorDebugger] = useState(true)
   const [rawColorMode, setRawColorMode] = useState(false)
-  const [useBaseLighting, setUseBaseLighting] = useState(true)
-  const [lightDebugEnabled, setLightDebugEnabled] = useState(true)
-  const [lightColor, setLightColor] = useState('#fff3cc')
-  const [lightIntensity, setLightIntensity] = useState(2.2)
-  const [lightAngleDeg, setLightAngleDeg] = useState(36)
-  const [lightPenumbra, setLightPenumbra] = useState(0.55)
-  const [lightDistance, setLightDistance] = useState(8)
-  const [lightDecay, setLightDecay] = useState(1.6)
-  const [lightPosX, setLightPosX] = useState(0.2)
-  const [lightPosY, setLightPosY] = useState(3.3)
-  const [lightPosZ, setLightPosZ] = useState(-0.6)
-  const [lightTargetX, setLightTargetX] = useState(0.05)
-  const [lightTargetY, setLightTargetY] = useState(1.75)
-  const [lightTargetZ, setLightTargetZ] = useState(-1.65)
-  const [showLightHelper, setShowLightHelper] = useState(true)
+  const [surfaceColors, setSurfaceColors] = useState(DEFAULT_SURFACE_COLORS)
+  const [paintTarget, setPaintTarget] = useState('wall')
+  const [paintColor, setPaintColor] = useState(DEFAULT_SURFACE_COLORS.wall)
+  const [showColorDebugger, setShowColorDebugger] = useState(false)
+  const lighting = usePlaygroundLightingSettings()
+
+  const applyPaintColor = () => {
+    setSurfaceColors((prev) => {
+      if (paintTarget === 'all') {
+        return { wall: paintColor, floor: paintColor, fridge: paintColor }
+      }
+      return { ...prev, [paintTarget]: paintColor }
+    })
+  }
+
+  const resetSurfaceColors = () => {
+    setSurfaceColors(DEFAULT_SURFACE_COLORS)
+    setPaintTarget('wall')
+    setPaintColor(DEFAULT_SURFACE_COLORS.wall)
+  }
 
   const cubePosition =
     cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
@@ -310,187 +251,62 @@ export function Playground({ onBack }) {
         <div className="font-bold text-sm mb-2">Playground (Level1 Layout)</div>
         <div className="mb-2">Door: {fridgeDoorOpen ? 'open' : 'closed'}</div>
         <div className="mb-3">Cube: {cubeState}</div>
+
         <div className="mb-3 border-t border-gray-200 pt-2">
-          <div className="font-semibold mb-2">Wall Color Debug</div>
+          <div className="font-semibold mb-2">Surface Color Painter</div>
           <label className="flex items-center justify-between mb-2">
             <span>Raw Color Mode</span>
             <input type="checkbox" checked={rawColorMode} onChange={(e) => setRawColorMode(e.target.checked)} />
           </label>
-          <label className="flex items-center justify-between mb-2">
-            <span>Enabled</span>
-            <input
-              type="checkbox"
-              checked={showColorDebugger}
-              onChange={(e) => setShowColorDebugger(e.target.checked)}
-            />
+          <label className="flex items-center justify-between gap-2 mb-2">
+            <span>Target</span>
+            <select
+              value={paintTarget}
+              onChange={(e) => setPaintTarget(e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded bg-white text-gray-700"
+            >
+              <option value="wall">Wall</option>
+              <option value="floor">Floor</option>
+              <option value="fridge">Fridge</option>
+              <option value="all">All</option>
+            </select>
           </label>
           <label className="flex items-center justify-between gap-2 mb-2">
-            <span>Input Color</span>
+            <span>Paint Color</span>
             <input
               type="color"
-              value={debugColor}
-              onChange={(e) => setDebugColor(e.target.value)}
+              value={paintColor}
+              onChange={(e) => setPaintColor(e.target.value)}
               className="w-12 h-6 bg-transparent border border-gray-300 rounded"
             />
           </label>
-          <div className="text-[11px] text-gray-500">Wall patch is on the back wall (right side). Raw mode bypasses lighting.</div>
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={applyPaintColor}
+              className="px-2 py-1 rounded bg-sky-500 text-white hover:bg-sky-600"
+            >
+              Apply
+            </button>
+            <button
+              onClick={resetSurfaceColors}
+              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
+            >
+              Reset
+            </button>
+            <button
+              onClick={() => setShowColorDebugger((prev) => !prev)}
+              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
+            >
+              {showColorDebugger ? 'Hide Patch' : 'Show Patch'}
+            </button>
+          </div>
+          <div className="text-[11px] text-gray-500">
+            Current: wall {surfaceColors.wall} / floor {surfaceColors.floor} / fridge {surfaceColors.fridge}
+          </div>
         </div>
-        <div className="mb-3 border-t border-gray-200 pt-2">
-          <div className="font-semibold mb-2">Lighting Debug (Table)</div>
-          <label className="flex items-center justify-between mb-2">
-            <span>Base Lighting</span>
-            <input type="checkbox" checked={useBaseLighting} onChange={(e) => setUseBaseLighting(e.target.checked)} />
-          </label>
-          <label className="flex items-center justify-between mb-2">
-            <span>Table Spot</span>
-            <input type="checkbox" checked={lightDebugEnabled} onChange={(e) => setLightDebugEnabled(e.target.checked)} />
-          </label>
-          <label className="flex items-center justify-between mb-2">
-            <span>Show Helper</span>
-            <input type="checkbox" checked={showLightHelper} onChange={(e) => setShowLightHelper(e.target.checked)} />
-          </label>
-          <label className="flex items-center justify-between gap-2 mb-2">
-            <span>Light Color</span>
-            <input
-              type="color"
-              value={lightColor}
-              onChange={(e) => setLightColor(e.target.value)}
-              className="w-12 h-6 bg-transparent border border-gray-300 rounded"
-            />
-          </label>
-          <label className="block mb-1">
-            Intensity: {lightIntensity.toFixed(2)}
-            <input
-              type="range"
-              min="0"
-              max="5"
-              step="0.05"
-              value={lightIntensity}
-              onChange={(e) => setLightIntensity(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Angle: {lightAngleDeg.toFixed(0)}°
-            <input
-              type="range"
-              min="10"
-              max="80"
-              step="1"
-              value={lightAngleDeg}
-              onChange={(e) => setLightAngleDeg(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Penumbra: {lightPenumbra.toFixed(2)}
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={lightPenumbra}
-              onChange={(e) => setLightPenumbra(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Distance: {lightDistance.toFixed(1)}
-            <input
-              type="range"
-              min="0"
-              max="15"
-              step="0.1"
-              value={lightDistance}
-              onChange={(e) => setLightDistance(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Decay: {lightDecay.toFixed(2)}
-            <input
-              type="range"
-              min="1"
-              max="2.5"
-              step="0.01"
-              value={lightDecay}
-              onChange={(e) => setLightDecay(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Pos X: {lightPosX.toFixed(2)}
-            <input
-              type="range"
-              min="-3"
-              max="3"
-              step="0.05"
-              value={lightPosX}
-              onChange={(e) => setLightPosX(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Pos Y: {lightPosY.toFixed(2)}
-            <input
-              type="range"
-              min="0.5"
-              max="5"
-              step="0.05"
-              value={lightPosY}
-              onChange={(e) => setLightPosY(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Pos Z: {lightPosZ.toFixed(2)}
-            <input
-              type="range"
-              min="-4"
-              max="2"
-              step="0.05"
-              value={lightPosZ}
-              onChange={(e) => setLightPosZ(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Target X: {lightTargetX.toFixed(2)}
-            <input
-              type="range"
-              min="-3"
-              max="3"
-              step="0.05"
-              value={lightTargetX}
-              onChange={(e) => setLightTargetX(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Target Y: {lightTargetY.toFixed(2)}
-            <input
-              type="range"
-              min="0.5"
-              max="3"
-              step="0.05"
-              value={lightTargetY}
-              onChange={(e) => setLightTargetY(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-          <label className="block mb-1">
-            Target Z: {lightTargetZ.toFixed(2)}
-            <input
-              type="range"
-              min="-4"
-              max="2"
-              step="0.05"
-              value={lightTargetZ}
-              onChange={(e) => setLightTargetZ(Number(e.target.value))}
-              className="w-full"
-            />
-          </label>
-        </div>
+
+        <PlaygroundLightingPanel lighting={lighting} />
+
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setFridgeDoorOpen((prev) => !prev)}
@@ -513,40 +329,29 @@ export function Playground({ onBack }) {
         </div>
       </div>
 
-      <Canvas orthographic flat={rawColorMode} gl={rawColorMode ? { toneMapping: THREE.NoToneMapping } : undefined}>
+      <Canvas
+        orthographic
+        shadows={false}
+        flat={rawColorMode}
+        gl={rawColorMode ? { toneMapping: THREE.NoToneMapping } : undefined}
+      >
+        <color attach="background" args={['#e9eef1']} />
         <GameCamera />
-        {!rawColorMode && useBaseLighting && <GameLighting />}
+        <PlaygroundLightingRig lighting={lighting} rawColorMode={rawColorMode} />
         <RawColorOverride enabled={rawColorMode} />
         <RawEdgeOverlay enabled={rawColorMode} />
-        {!rawColorMode && (
-          <TableLightDebugger
-            enabled={lightDebugEnabled}
-            color={lightColor}
-            intensity={lightIntensity}
-            angleDeg={lightAngleDeg}
-            penumbra={lightPenumbra}
-            distance={lightDistance}
-            decay={lightDecay}
-            posX={lightPosX}
-            posY={lightPosY}
-            posZ={lightPosZ}
-            targetX={lightTargetX}
-            targetY={lightTargetY}
-            targetZ={lightTargetZ}
-            showHelper={showLightHelper}
-          />
-        )}
 
-        <Floor width={12} depth={12} color="#dcd7cf" />
-        <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} />
-        <Wall position={[0, 2.5, -2.5]} hasWindow={true} />
-        <WallColorDebugger color={debugColor} visible={showColorDebugger} />
+        <Floor width={12} depth={12} color={surfaceColors.floor} />
+        <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color={surfaceColors.wall} />
+        <Wall position={[0, 2.5, -2.5]} hasWindow={true} color={surfaceColors.wall} />
+        <WallColorDebugger color={surfaceColors.wall} visible={showColorDebugger} />
 
         <Table position={[0, 0, -1.68]} scale={[1.2, 1.2, 1.44]} />
         <InteractiveFridge
           position={[-2, 0, -0.5]}
           isOpen={fridgeDoorOpen}
           onToggle={() => setFridgeDoorOpen((prev) => !prev)}
+          color={surfaceColors.fridge}
         />
 
         <mesh position={cubePosition}>

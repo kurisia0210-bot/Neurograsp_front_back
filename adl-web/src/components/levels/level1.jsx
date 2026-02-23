@@ -4,6 +4,7 @@ import * as THREE from 'three'
 
 import { GameCamera } from '../game/GameCamera'
 import { GameLighting } from '../ui/GameLighting'
+import { PlaygroundLightingRig, usePlaygroundLightingSettings } from '../ui/PlaygroundLightingModule'
 import { Floor } from '../Floor'
 import { Wall } from '../Wall'
 import { Table } from '../Table'
@@ -88,6 +89,8 @@ export function Level1({ onBack }) {
   const [cubeState, setCubeState] = useState('on_table')
   const [showDebug, setShowDebug] = useState(false)
   const [actionLine, setActionLine] = useState('Action: waiting for next step')
+  const [useLightingSystem, setUseLightingSystem] = useState(false)
+  const lighting = usePlaygroundLightingSettings()
 
   const getWorldState = useCallback(
     (agentState) => {
@@ -324,6 +327,14 @@ export function Level1({ onBack }) {
           >
             RESET
           </button>
+          <button
+            onClick={() => setUseLightingSystem((prev) => !prev)}
+            className={`px-5 py-2 rounded-full font-bold transition-all shadow-lg ${
+              useLightingSystem ? 'bg-amber-500 text-white' : 'bg-slate-300 text-slate-800'
+            }`}
+          >
+            {useLightingSystem ? 'LIGHTING SYSTEM ON' : 'LIGHTING SYSTEM OFF'}
+          </button>
         </div>
 
         <div className="bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg text-xs text-gray-700 flex gap-2">
@@ -398,7 +409,11 @@ export function Level1({ onBack }) {
 
       <Canvas orthographic>
         <GameCamera />
-        <GameLighting />
+        {useLightingSystem ? (
+          <PlaygroundLightingRig lighting={lighting} rawColorMode={false} />
+        ) : (
+          <GameLighting />
+        )}
 
         <Floor width={12} depth={12} color="#dcd7cf" />
         <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} />

@@ -7,6 +7,7 @@ import { Playground } from './playground/Playground'
 import { BubbleTestDashboard } from './playground/BubbleTestDashboard'
 import { HoldableComparison } from './playground/HoldableComparison'
 import { AgentPlayground } from './playground/AgentPlayground'
+import LivelyLightingComboPreview from './components/ui/light_test'
 
 export default function App() {
   // 🧭 路由状态: 'menu' | 'level1' | 'level2' | 'playground' | 'bubble-test'
@@ -80,6 +81,21 @@ export default function App() {
           >
             🧪 Bubble Test
           </button>
+          <button
+            onClick={() => setCurrentScreen('light-test')}
+            style={{
+              padding: '12px 20px',
+              background: '#f39c12',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 4px 12px rgba(243, 156, 18, 0.4)'
+            }}
+          >
+            💡 Light Test
+          </button>
         </div>
       )}
       
@@ -118,6 +134,11 @@ export default function App() {
       {/* 🤖 Agent Playground */}
       {currentScreen === 'agent-playground' && (
         <AgentPlayground onBack={() => setCurrentScreen('menu')} />
+      )}
+
+      {/* 💡 Light Test */}
+      {currentScreen === 'light-test' && (
+        <LivelyLightingComboPreview onBack={() => setCurrentScreen('menu')} />
       )}
 
     </div>
