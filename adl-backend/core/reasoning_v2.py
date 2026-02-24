@@ -20,6 +20,7 @@ import os
 from typing import Optional
 
 from core.adapters_v2 import InstructAdapter
+from core.complex_actions_v2 import ComplexActionPlanner
 from core.guards_v2 import (
     FinishGuard,
     GuardCheckResult,
@@ -34,7 +35,7 @@ class ReasoningV2Pipeline:
     """
     P2 minimal pipeline:
     0) finish_guard(obs)           # deterministic completion short-circuit
-    1) proposal = proposer.propose(obs)
+    1) proposal = complex planner OR proposer.propose(obs)
     2) guard_check(proposal, obs)  # noop + state stagnation guard
     3) actuation_route(...)        # passthrough + override support
     """
@@ -45,12 +46,14 @@ class ReasoningV2Pipeline:
         finish_guard: Optional[FinishGuard] = None,
         state_guard: Optional[StateStagnationGuard] = None,
         instruct_adapter: Optional[InstructAdapter] = None,
+        complex_action_planner: Optional[ComplexActionPlanner] = None,
         execution_mode: Optional[str] = None,
     ) -> None:
         self._proposer = proposer or build_proposer_from_env()
         self._finish_guard = finish_guard or FinishGuard()
         self._state_guard = state_guard or build_state_stagnation_guard_from_env()
         self._instruct_adapter = instruct_adapter or InstructAdapter()
+        self._complex_action_planner = complex_action_planner or ComplexActionPlanner()
 
         mode_raw = (execution_mode or os.getenv("REASONING_V2_EXECUTION_MODE", "INSTRUCT")).strip().upper()
         self._execution_mode = "INSTRUCT" if mode_raw == "INSTRUCT" else "ACT"
@@ -73,14 +76,18 @@ class ReasoningV2Pipeline:
             if obs.episode_id is not None:
                 self._finish_guard.reset(obs.session_id, int(obs.episode_id))
                 self._state_guard.reset(obs.session_id, int(obs.episode_id))
+                self._complex_action_planner.reset(obs.session_id, int(obs.episode_id))
             return finish_action
 
-        proposal = await self.propose(obs)
+        proposal = self._complex_action_planner.next_atomic(obs)
+        if proposal is None:
+            proposal = await self.propose(obs)
         check = await self.guard_check(proposal, obs)
         action = await self.actuation_route(check, obs)
         if self._is_finish_action(action) and obs.episode_id is not None:
             self._finish_guard.reset(obs.session_id, int(obs.episode_id))
             self._state_guard.reset(obs.session_id, int(obs.episode_id))
+            self._complex_action_planner.reset(obs.session_id, int(obs.episode_id))
         return action
 
     @staticmethod
@@ -105,6 +112,7 @@ __all__ = [
     "FinishGuard",
     "StateStagnationGuard",
     "InstructAdapter",
+    "ComplexActionPlanner",
     "ReasoningV2Pipeline",
     "analyze_and_propose",
 ]

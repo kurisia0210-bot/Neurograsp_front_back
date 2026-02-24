@@ -360,6 +360,77 @@ class PipelineTestHarness:
                 actual=type(exc).__name__,
             )
 
+    async def test_complex_put_in_sequence(self) -> ComponentTestResult:
+        started = time.perf_counter()
+        name = "complex_put_in_sequence"
+        try:
+            act_pipeline = ReasoningV2Pipeline(
+                proposer=self._build_proposer("mock", None),
+                execution_mode="ACT",
+            )
+
+            obs1 = self._make_obs(
+                session_id="complex-session",
+                episode_id=1,
+                step_id=1,
+                holding=None,
+                cube_state="on_table",
+                fridge_door_state="closed",
+                global_task="Put red cube in fridge",
+            )
+            a1 = await act_pipeline.analyze_and_propose(obs1)
+
+            obs2 = self._make_obs(
+                session_id="complex-session",
+                episode_id=1,
+                step_id=2,
+                holding="red_cube",
+                cube_state="in_hand",
+                fridge_door_state="closed",
+                global_task="Put red cube in fridge",
+            )
+            a2 = await act_pipeline.analyze_and_propose(obs2)
+
+            obs3 = self._make_obs(
+                session_id="complex-session",
+                episode_id=1,
+                step_id=3,
+                holding="red_cube",
+                cube_state="in_hand",
+                fridge_door_state="open",
+                global_task="Put red cube in fridge",
+            )
+            a3 = await act_pipeline.analyze_and_propose(obs3)
+
+            seq = [
+                (a1.type, a1.interaction_type, a1.target_item),
+                (a2.type, a2.interaction_type, a2.target_item),
+                (a3.type, a3.interaction_type, a3.target_item),
+            ]
+            expected = [
+                ("INTERACT", "PICK", "red_cube"),
+                ("INTERACT", "OPEN", "fridge_door"),
+                ("INTERACT", "PLACE", "fridge_main"),
+            ]
+            passed = seq == expected
+            return ComponentTestResult(
+                name=name,
+                passed=passed,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail="Complex planner should decompose PUT_IN(fridge) into PICK -> OPEN -> PLACE.",
+                expected=str(expected),
+                actual=str(seq),
+            )
+        except Exception as exc:
+            return ComponentTestResult(
+                name=name,
+                passed=False,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail=f"Exception: {exc}",
+                expected="No exception",
+                actual=type(exc).__name__,
+            )
+
     async def test_end_to_end(self) -> ComponentTestResult:
         started = time.perf_counter()
         name = "pipeline_end_to_end"
@@ -399,6 +470,7 @@ class PipelineTestHarness:
             self.test_state_stagnation_guard,
             self.test_watchdog_precedence,
             self.test_instruct_adapter,
+            self.test_complex_put_in_sequence,
             self.test_end_to_end,
         ]
         tests.extend(self._custom_tests.values())

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
@@ -20,6 +20,18 @@ import { useWorldStateManager } from '../components/game/mechanics/WorldStateMan
 
 const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
+const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
+const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
+const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+
+function isInFridgeMainDropZone(position) {
+  if (!Array.isArray(position)) return false
+  const [x, , z] = position
+  return (
+    Math.abs(x - FRIDGE_MAIN_DROP_CENTER[0]) <= FRIDGE_MAIN_DROP_HALF_SIZE[0] &&
+    Math.abs(z - FRIDGE_MAIN_DROP_CENTER[1]) <= FRIDGE_MAIN_DROP_HALF_SIZE[1]
+  )
+}
 
 function getVisualTargetPosition(location) {
   if (location === 'fridge_zone') return [-2, 0, 1]
@@ -67,6 +79,7 @@ function getBehaviorText(intent) {
 }
 
 export function AgentPlayground({ onBack }) {
+  const autoSnapLockRef = useRef(false)
   const worldStateManager = useWorldStateManager({
     initialFridgeOpen: false,
     initialCubes: [
@@ -167,6 +180,7 @@ export function AgentPlayground({ onBack }) {
   }
 
   const handleResetAgent = () => {
+    autoSnapLockRef.current = false
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
     setIntentHistory([])
@@ -297,19 +311,48 @@ export function AgentPlayground({ onBack }) {
           </mesh>
         </group>
 
+        <mesh position={[FRIDGE_MAIN_DROP_CENTER[0], 1.15, FRIDGE_MAIN_DROP_CENTER[1]]}>
+          <boxGeometry
+            args={[FRIDGE_MAIN_DROP_HALF_SIZE[0] * 2, 1.1, FRIDGE_MAIN_DROP_HALF_SIZE[1] * 2]}
+          />
+          <meshStandardMaterial
+            color={worldStateManager.fridgeOpen ? '#22c55e' : '#64748b'}
+            transparent
+            opacity={worldStateManager.fridgeOpen ? 0.18 : 0.08}
+            wireframe
+          />
+        </mesh>
+
         {worldStateManager.cubes.map((cube) => (
           <WholeCube
             key={cube.id}
             position={cube.position}
             dragHeight={cube.dragHeight}
+            isHeldByAgent={cube.state === 'in_hand'}
+            allowClickThroughWhileDragging={true}
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
               worldStateManager.setCubes((prev) =>
                 prev.map((c) => (c.id === cube.id ? { ...c, position: nextPosition } : c))
               )
+
+              if (autoSnapLockRef.current) return
+              if (cube.state !== 'in_hand') return
+              if (!worldStateManager.fridgeOpen) return
+              if (!isInFridgeMainDropZone(nextPosition)) return
+
+              autoSnapLockRef.current = true
+              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              setActionBubble({
+                visible: true,
+                status: 'SUCCESS',
+                message: 'Auto snap: red_cube -> fridge_main'
+              })
+              setBehaviorLine('Action: place red_cube -> fridge_main (auto snap)')
             }}
             onPickUp={() => {
+              autoSnapLockRef.current = false
               worldStateManager.pickUpCube(cube.id)
             }}
             onPlace={() => {
