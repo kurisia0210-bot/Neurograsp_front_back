@@ -1,4 +1,4 @@
-# Prompt 与 Watchdog 版本日志（手工维护）
+﻿# Prompt 与 Watchdog 版本日志（手工维护）
 
 用途：
 - 仅用于人工记录 Prompt 和 Watchdog 的实验变更。

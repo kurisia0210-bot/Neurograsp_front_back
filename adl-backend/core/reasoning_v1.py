@@ -315,13 +315,20 @@ The following are critical rules learned from past experience. You MUST follow t
         try:
             clean_content = re.sub(r"```json|```", "", raw_content).strip()
             data = json.loads(clean_content)
-            # 注入追踪键确保响应包含完整的追踪信息
+            # Inject trace keys from observation.
             data['session_id'] = obs.session_id
             data['episode_id'] = obs.episode_id
             data['step_id'] = obs.step_id
             return ActionPayload(**data)
+        except json.JSONDecodeError as e:
+            raw_preview = raw_content[:500].replace("\n", "\\n")
+            print(f"[JSON ERROR] {e}")
+            print(f"[LLM RAW] {raw_preview}")
+            return self._make_action(obs, type="THINK", content=f"Invalid JSON from LLM: {str(e)[:100]}")
         except Exception as e:
-            print(f"❌ Reasoning Error: {e}")
+            raw_preview = raw_content[:500].replace("\n", "\\n")
+            print(f"[REASONING ERROR] {e}")
+            print(f"[LLM RAW] {raw_preview}")
             return self._make_action(obs, type="THINK", content=f"Schema Error: {str(e)[:100]}")
 
 
