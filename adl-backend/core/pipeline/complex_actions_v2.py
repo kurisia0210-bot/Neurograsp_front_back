@@ -4,8 +4,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Optional, Tuple
 
-from core.common_v2 import make_action
-from core.goal_registry import GoalRegistry, GoalSpec
+from core.pipeline.common_v2 import make_action
+from core.goal.goal_registry import GoalRegistry, GoalSpec
 from schema.payload import ActionPayload, ObservationPayload
 
 

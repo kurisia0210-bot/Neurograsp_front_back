@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from core.common_v2 import make_action
+from core.pipeline.common_v2 import make_action
 from schema.payload import ActionPayload, ObservationPayload
 
 

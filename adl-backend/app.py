@@ -56,6 +56,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--proposer", choices=["mock", "v1"], help="V2 proposer strategy")
     parser.add_argument("--mode", choices=["INSTRUCT", "ACT"], help="V2 execution mode")
     parser.add_argument("--mock-script", help="Path to V2 mock script json")
+    parser.add_argument("--llm-mode", choices=["mock", "deepseek", "disabled"], help="LLM runtime mode")
+    parser.add_argument(
+        "--llm-mock-scenario",
+        choices=["valid_json", "invalid_json"],
+        help="Mock LLM scenario when --llm-mode mock",
+    )
 
     parser.add_argument(
         "--json",
@@ -90,6 +96,8 @@ def _apply_cli_env(args: argparse.Namespace) -> None:
     _set_env_if_provided("REASONING_V2_PROPOSER", args.proposer)
     _set_env_if_provided("REASONING_V2_EXECUTION_MODE", args.mode)
     _set_env_if_provided("REASONING_V2_MOCK_SCRIPT", args.mock_script)
+    _set_env_if_provided("LLM_MODE", args.llm_mode)
+    _set_env_if_provided("LLM_MOCK_SCENARIO", args.llm_mock_scenario)
 
     if args.json and args.no_json:
         raise ValueError("--json and --no-json cannot be used together.")

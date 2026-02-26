@@ -1,9 +1,9 @@
 from pydantic import ValidationError
 
-from core.error_dictionary import classify_step_error
-from core.memory import episodic_memory
+from core.safety.error_dictionary import classify_step_error
+from core.runtime.memory import episodic_memory
 from core.reasoning import analyze_and_propose
-from core.step_logger import emit_step_summary
+from core.runtime.step_logger import emit_step_summary
 from schema.payload import (
     ActionExecutionResult,
     ActionPayload,

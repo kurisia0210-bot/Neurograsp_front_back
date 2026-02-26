@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Protocol, Tuple
 
-from core.goal_dsl import GoalDslEvaluator, GoalDslParser, GoalEvalReport, GoalExpr
+from core.goal.goal_dsl import GoalDslEvaluator, GoalDslParser, GoalEvalReport, GoalExpr
 from schema.payload import ObservationPayload
 
 

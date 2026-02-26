@@ -244,7 +244,7 @@ episodic_memory = EpisodicMemory()
 所有模块都应通过此单例访问记忆系统，确保数据一致性。
 
 使用示例：
-    from core.memory import episodic_memory
+    from core.runtime.memory import episodic_memory
     episodic_memory.commit(observation)
     last_fail = episodic_memory.get_last_failure(session_id="test")
 """

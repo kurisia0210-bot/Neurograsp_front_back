@@ -107,6 +107,43 @@ export default function App() {
         <MainMenu onStartLevel={handleStartLevel} />
       )}
 
+      {currentScreen === 'menu' && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '16px',
+            bottom: '10px',
+            zIndex: 10000,
+            fontSize: '11px',
+            lineHeight: 1.35,
+            maxWidth: '560px',
+            color: '#334155',
+            background: 'rgba(255, 255, 255, 0.9)',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            border: '1px solid rgba(148, 163, 184, 0.35)',
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <div>
+            © {new Date().getFullYear()} 王俊鹏 版权所有
+          </div>
+          <div>
+            未经书面许可，禁止对本项目的全部或部分内容进行复制、转载、修改、反向工程或商业使用。
+          </div>
+          <div style={{ marginTop: '4px' }}>
+            <a 
+              href="https://beian.miit.gov.cn/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ color: '#3b82f6', textDecoration: 'none' }}
+            >
+              浙ICP备2026009520号
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* 关卡路由 */}
       {currentScreen === 'level1' && (
         <Level1 onBack={() => setCurrentScreen('menu')} />

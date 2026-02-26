@@ -19,15 +19,15 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from core.adapters_v2 import InstructAdapter
-from core.complex_actions_v2 import ComplexActionPlanner
-from core.guards_v2 import (
+from core.pipeline.adapters_v2 import InstructAdapter
+from core.pipeline.complex_actions_v2 import ComplexActionPlanner
+from core.safety.guards_v2 import (
     FinishGuard,
     GuardCheckResult,
     StateStagnationGuard,
     build_state_stagnation_guard_from_env,
 )
-from core.proposers_v2 import MockProposer, Proposer, V1Proposer, build_proposer_from_env
+from core.pipeline.proposers_v2 import MockProposer, Proposer, V1Proposer, build_proposer_from_env
 from schema.payload import ActionPayload, ObservationPayload
 
 

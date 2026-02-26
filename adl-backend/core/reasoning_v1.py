@@ -2,9 +2,9 @@ import json
 import re
 from schema.payload import ObservationPayload, ActionPayload, SystemResponses, AgentActionType
 from service.llm_client import get_completion
-from core.memory import episodic_memory 
+from core.runtime.memory import episodic_memory 
 from service.vector_db import vector_db
-from core.watchdog import Watchdog
+from core.safety.watchdog import Watchdog
 from core.prompt_templates import GAME1_SYSTEM_PROMPT
 from typing import Optional
 

@@ -68,7 +68,13 @@ export function GameLighting({ isSuccess = false }) {
         shadow-bias={-0.0001}
       />
 
-      <Environment preset="city" blur={1} />
+      {/* 使用简单的环境光替代外部HDRI，避免网络加载问题 */}
+      <ambientLight intensity={0.2} color="#ffffff" />
+      <hemisphereLight 
+        skyColor="#87CEEB" 
+        groundColor="#8B7355" 
+        intensity={0.5}
+      />
 
       {/* 接触阴影：因为没有了雾气遮挡，阴影会看得很清楚，保留它增加落地感 */}
       <ContactShadows opacity={0.4} scale={20} blur={2.5} far={2} color="#0f172a" />
