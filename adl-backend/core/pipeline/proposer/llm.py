@@ -17,11 +17,17 @@ class LLMProposer:
     standalone before being wired into env routing.
     """
 
+    # Hard boundary: proposer can suggest only operational next-step actions.
+    # Final completion decision belongs to FinishGuard, not proposer.
+    NON_DELEGABLE_ACTION_TYPES = {"FINISH"}
+    ALLOWED_PROPOSER_ACTION_TYPES = {"MOVE_TO", "INTERACT", "THINK", "IDLE", "SPEAK"}
+
     DEFAULT_SYSTEM_PROMPT = (
         "You are a safe embodied agent planner. "
         "Output only one JSON object. "
         "Schema keys: type, target_poi, target_item, interaction_type, target_length, content. "
-        "Allowed type: MOVE_TO, INTERACT, THINK, IDLE, FINISH, SPEAK. "
+        "Allowed type: MOVE_TO, INTERACT, THINK, IDLE, SPEAK. "
+        "NEVER output FINISH. "
         "Use short content text."
     )
 
@@ -81,6 +87,24 @@ class LLMProposer:
             payload_data = {k: v for k, v in data.items() if k in allowed}
             payload_data.setdefault("type", "THINK")
             payload_data.setdefault("content", "LLM proposal parsed with defaults.")
+            raw_type = payload_data.get("type", "THINK")
+            action_type = str(raw_type).upper()
+
+            if action_type in self.NON_DELEGABLE_ACTION_TYPES:
+                return make_action(
+                    obs,
+                    type="THINK",
+                    content=f"Blocked non-delegable action from proposer: {action_type}.",
+                )
+
+            if action_type not in self.ALLOWED_PROPOSER_ACTION_TYPES:
+                return make_action(
+                    obs,
+                    type="THINK",
+                    content=f"Unsupported proposer action type: {action_type}.",
+                )
+
+            payload_data["type"] = action_type
             return make_action(obs, **payload_data)
         except json.JSONDecodeError as exc:
             preview = raw_content[:300].replace("\n", "\\n")
@@ -97,4 +121,3 @@ class LLMProposer:
         messages = self._build_messages(obs)
         raw = await get_completion(messages, model=self._model, temperature=self._temperature)
         return self._parse_to_action(obs, raw)
-
