@@ -6,8 +6,8 @@ import time
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-from core.goal_dsl import GoalDslEvaluator, GoalDslParser
-from core.goal_registry import GoalRegistry
+from core.goal.goal_dsl import GoalDslEvaluator, GoalDslParser
+from core.goal.goal_registry import GoalRegistry
 from schema.payload import ObservationPayload
 
 

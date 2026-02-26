@@ -6,8 +6,8 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Protocol
 
-from core.common_v2 import make_action
-from core.goal_registry import GoalRegistry
+from core.pipeline.common_v2 import make_action
+from core.goal.goal_registry import GoalRegistry
 from core.reasoning_v1 import analyze_and_propose as analyze_and_propose_v1
 from schema.payload import ActionPayload, ObservationPayload
 

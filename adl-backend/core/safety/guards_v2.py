@@ -6,8 +6,8 @@ import os
 import re
 from typing import Deque, Dict, List, Optional, Set, Tuple
 
-from core.common_v2 import make_action
-from core.goal_registry import GoalRegistry, GoalSpec
+from core.pipeline.common_v2 import make_action
+from core.goal.goal_registry import GoalRegistry, GoalSpec
 from schema.payload import ActionPayload, ObservationPayload
 
 
