@@ -522,6 +522,41 @@ class PipelineTestHarness:
                 actual=type(exc).__name__,
             )
 
+    async def test_llm_parser_normalizes_pick_alias(self) -> ComponentTestResult:
+        started = time.perf_counter()
+        name = "llm_parser_normalizes_pick_alias"
+        try:
+            obs = self._make_obs(session_id="llm-parser-pick-alias", step_id=1)
+            parser = LLMProposerResponseParser()
+            action = parser.parse_to_action(
+                obs,
+                '{"type":"PICK","target_item":"red_cube","content":"pick cube"}',
+            )
+            action_type = action.type.value if hasattr(action.type, "value") else action.type
+            interaction_type = (
+                action.interaction_type.value
+                if hasattr(action.interaction_type, "value")
+                else action.interaction_type
+            )
+            passed = action_type == "INTERACT" and interaction_type == "PICK"
+            return ComponentTestResult(
+                name=name,
+                passed=passed,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail="Parser should normalize shorthand type PICK into INTERACT/PICK.",
+                expected="type=INTERACT and interaction_type=PICK",
+                actual=f"type={action_type}, interaction_type={interaction_type}",
+            )
+        except Exception as exc:
+            return ComponentTestResult(
+                name=name,
+                passed=False,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail=f"Exception: {exc}",
+                expected="No exception",
+                actual=type(exc).__name__,
+            )
+
     async def test_prompt_builder_goal_and_last_step(self) -> ComponentTestResult:
         started = time.perf_counter()
         name = "prompt_builder_goal_and_last_step"
@@ -602,6 +637,7 @@ class PipelineTestHarness:
             self.test_end_to_end,
             self.test_llm_parser_blocks_finish,
             self.test_llm_parser_rejects_unknown_type,
+            self.test_llm_parser_normalizes_pick_alias,
             self.test_prompt_builder_goal_and_last_step,
         ]
         tests.extend(self._custom_tests.values())

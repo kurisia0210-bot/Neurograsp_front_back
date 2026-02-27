@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
-from typing import Set
+from typing import Any, Dict, Optional, Set, Tuple
 
 from core.pipeline.common_v2 import make_action
 from schema.payload import ActionPayload, ObservationPayload
@@ -10,83 +10,156 @@ from schema.payload import ActionPayload, ObservationPayload
 
 class LLMProposerResponseParser:
     """
-    LLM提案器响应解析器。
-    
-    职责：
-    1. 解析LLM的原始响应文本
-    2. 验证响应格式和内容
-    3. 过滤不允许的动作类型
-    4. 处理解析错误并返回安全的默认动作
-    
-    设计原则：
-    - 安全性优先：严格限制提案器可以生成的动作类型
-    - 错误容忍：对解析错误有完善的错误处理机制
-    - 日志记录：记录解析错误以便调试
-    - 职责分离：提案器不能决定任务完成，这是FinishGuard的职责
+    Parses raw LLM output into `ActionPayload` with strict safety checks.
+
+    Responsibilities:
+    1. Parse raw JSON text from LLM.
+    2. Normalize common aliases to schema-compliant values.
+    3. Enforce proposer action boundary (no FINISH decision).
+    4. Return safe THINK fallback on parse/validation errors.
     """
-    
-    # 硬边界：提案器只能建议操作性的下一步动作
-    # 最终完成决定属于FinishGuard，而不是提案器
+
+    # Proposer must not decide completion.
     NON_DELEGABLE_ACTION_TYPES: Set[str] = {"FINISH"}
-    
-    # 允许的提案器动作类型
+
+    # Action types allowed at proposer output boundary.
     ALLOWED_PROPOSER_ACTION_TYPES: Set[str] = {"MOVE_TO", "INTERACT", "THINK", "IDLE", "SPEAK"}
 
+    # Shorthand action aliases from LLM output.
+    ACTION_TYPE_ALIASES: Dict[str, Tuple[str, Optional[str]]] = {
+        "move": ("MOVE_TO", None),
+        "go": ("MOVE_TO", None),
+        "walk": ("MOVE_TO", None),
+        "mv": ("MOVE_TO", None),
+        "pick": ("INTERACT", "PICK"),
+        "pickup": ("INTERACT", "PICK"),
+        "pick_up": ("INTERACT", "PICK"),
+        "hold": ("INTERACT", "PICK"),
+        "grab": ("INTERACT", "PICK"),
+        "place": ("INTERACT", "PLACE"),
+        "put": ("INTERACT", "PLACE"),
+        "open": ("INTERACT", "OPEN"),
+        "close": ("INTERACT", "CLOSE"),
+        "toggle": ("INTERACT", "TOGGLE"),
+        "slice": ("INTERACT", "SLICE"),
+        "cook": ("INTERACT", "COOK"),
+    }
+
+    # Value alias normalizers.
+    POI_ALIASES: Dict[str, str] = {
+        "table": "table_center",
+        "table_center": "table_center",
+        "center_table": "table_center",
+        "fridge": "fridge_zone",
+        "fridge_zone": "fridge_zone",
+        "refrigerator": "fridge_zone",
+        "stove": "stove_zone",
+        "stove_zone": "stove_zone",
+    }
+    ITEM_ALIASES: Dict[str, str] = {
+        "red_cube": "red_cube",
+        "redcube": "red_cube",
+        "red_cube_block": "red_cube",
+        "fridge": "fridge_main",
+        "fridge_main": "fridge_main",
+        "fridge_door": "fridge_door",
+        "table": "table_surface",
+        "table_surface": "table_surface",
+        "stove": "stove",
+    }
+    INTERACTION_ALIASES: Dict[str, str] = {
+        "pick": "PICK",
+        "pickup": "PICK",
+        "pick_up": "PICK",
+        "place": "PLACE",
+        "put": "PLACE",
+        "open": "OPEN",
+        "close": "CLOSE",
+        "toggle": "TOGGLE",
+        "slice": "SLICE",
+        "cook": "COOK",
+        "none": "NONE",
+    }
+
+    @staticmethod
+    def _to_key(value: Any) -> str:
+        """Lowercase + underscore + strip non-identifier characters."""
+        text = str(value).strip().lower()
+        text = text.replace("-", "_").replace(" ", "_")
+        text = re.sub(r"[^a-z0-9_]", "", text)
+        return text
+
+    def _normalize_payload(self, payload_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize action type, target aliases, interaction aliases, and target_length."""
+        raw_type = payload_data.get("type")
+        if raw_type not in (None, ""):
+            type_key = self._to_key(raw_type)
+            canonical = self.ACTION_TYPE_ALIASES.get(type_key)
+            if canonical is not None:
+                canonical_type, implied_interaction = canonical
+                payload_data["type"] = canonical_type
+                if implied_interaction and payload_data.get("interaction_type") in (None, ""):
+                    payload_data["interaction_type"] = implied_interaction
+            else:
+                payload_data["type"] = str(raw_type).strip().upper()
+
+        target_poi = payload_data.get("target_poi")
+        if target_poi not in (None, ""):
+            poi_key = self._to_key(target_poi)
+            payload_data["target_poi"] = self.POI_ALIASES.get(poi_key, poi_key)
+
+        target_item = payload_data.get("target_item")
+        if target_item not in (None, ""):
+            item_key = self._to_key(target_item)
+            payload_data["target_item"] = self.ITEM_ALIASES.get(item_key, item_key)
+
+        interaction_type = payload_data.get("interaction_type")
+        if interaction_type not in (None, ""):
+            interaction_key = self._to_key(interaction_type)
+            payload_data["interaction_type"] = self.INTERACTION_ALIASES.get(
+                interaction_key, interaction_key.upper()
+            )
+
+        target_length = payload_data.get("target_length")
+        if isinstance(target_length, str) and target_length.strip().isdigit():
+            payload_data["target_length"] = int(target_length.strip())
+            target_length = payload_data["target_length"]
+        if isinstance(target_length, int) and not (3 <= target_length <= 11):
+            payload_data.pop("target_length", None)
+        elif target_length is not None and not isinstance(target_length, int):
+            payload_data.pop("target_length", None)
+
+        return payload_data
+
     def parse_to_action(self, obs: ObservationPayload, raw_content: str) -> ActionPayload:
-        """
-        解析LLM原始响应为动作。
-        
-        处理流程：
-        1. 检查空响应
-        2. 清理响应文本（移除代码块标记）
-        3. 解析JSON
-        4. 验证数据结构
-        5. 过滤允许的字段
-        6. 验证动作类型
-        7. 返回解析后的动作或错误处理
-        
-        参数：
-        - obs: 观察数据，用于创建动作的trace字段
-        - raw_content: LLM的原始响应文本
-        
-        返回：
-        - ActionPayload: 解析后的动作，如果解析失败则返回THINK动作
-        """
-        # 1. 检查空响应
+        """Parse and validate LLM output, then return a safe `ActionPayload`."""
         if not raw_content:
             return make_action(obs, type="THINK", content="LLM returned empty content.")
 
         try:
-            # 2. 清理响应文本：移除可能的代码块标记
             clean = re.sub(r"```json|```", "", raw_content).strip()
-            
-            # 3. 解析JSON
             data = json.loads(clean)
-            
-            # 4. 验证数据结构
+
             if not isinstance(data, dict):
                 raise ValueError("LLM output must be a JSON object.")
 
-            # 5. 过滤允许的字段
             allowed = {
-                "type",           # 动作类型
-                "target_poi",     # 目标位置
-                "target_item",    # 目标物品
-                "interaction_type", # 交互类型
-                "target_length",  # 目标长度
-                "content",        # 内容描述
+                "type",
+                "target_poi",
+                "target_item",
+                "interaction_type",
+                "target_length",
+                "content",
             }
             payload_data = {k: v for k, v in data.items() if k in allowed}
-            
-            # 设置默认值
+            payload_data = self._normalize_payload(payload_data)
+
             payload_data.setdefault("type", "THINK")
             payload_data.setdefault("content", "LLM proposal parsed with defaults.")
-            
-            # 6. 验证动作类型
+
             raw_type = payload_data.get("type", "THINK")
             action_type = str(raw_type).upper()
 
-            # 检查不可委托的动作类型（如FINISH）
             if action_type in self.NON_DELEGABLE_ACTION_TYPES:
                 return make_action(
                     obs,
@@ -94,29 +167,35 @@ class LLMProposerResponseParser:
                     content=f"Blocked non-delegable action from proposer: {action_type}.",
                 )
 
-            # 检查是否在允许的动作类型范围内
             if action_type not in self.ALLOWED_PROPOSER_ACTION_TYPES:
-                return make_action(
-                    obs,
-                    type="THINK",
-                    content=f"Unsupported proposer action type: {action_type}.",
-                )
+                # Strip accidental punctuation, e.g. `PICK."` -> `PICK`.
+                cleaned_action_type = re.sub(r"[^A-Z_]", "", action_type)
+                if cleaned_action_type:
+                    action_type = cleaned_action_type
 
-            # 7. 返回解析后的动作
+            if action_type not in self.ALLOWED_PROPOSER_ACTION_TYPES:
+                # Compatibility fallback: top-level interaction verbs.
+                if action_type in set(self.INTERACTION_ALIASES.values()):
+                    payload_data.setdefault("interaction_type", action_type)
+                    action_type = "INTERACT"
+                else:
+                    return make_action(
+                        obs,
+                        type="THINK",
+                        content=f"Unsupported proposer action type: {action_type}.",
+                    )
+
             payload_data["type"] = action_type
             return make_action(obs, **payload_data)
-            
+
         except json.JSONDecodeError as exc:
-            # JSON解析错误处理
             preview = raw_content[:300].replace("\n", "\\n")
             print(f"[ReasoningV2][LLMProposer] JSON ERROR: {exc}")
             print(f"[ReasoningV2][LLMProposer] RAW: {preview}")
             return make_action(obs, type="THINK", content=f"Invalid JSON from LLM: {str(exc)[:120]}")
-            
+
         except Exception as exc:
-            # 其他解析错误处理
             preview = raw_content[:300].replace("\n", "\\n")
             print(f"[ReasoningV2][LLMProposer] PARSE ERROR: {exc}")
             print(f"[ReasoningV2][LLMProposer] RAW: {preview}")
             return make_action(obs, type="THINK", content=f"LLM parse error: {str(exc)[:120]}")
-
