@@ -14,7 +14,8 @@ Key switches:
 
 - `LLM_MODE=mock|deepseek|disabled`
 - `LLM_MOCK_SCENARIO=valid_json|invalid_json`
-- `REASONING_V2_PROPOSER=mock|v1`
+- `REASONING_V2_PROPOSER=mock|v1|llm`
+- `REASONING_V2_MACRO_PLANNER=auto|always|never`
 - `REASONING_PIPELINE=v1|v2`
 
 ## 3) Start backend
@@ -32,13 +33,13 @@ python adl-backend/app.py --pipeline v1 --llm-mode mock --llm-mock-scenario vali
 ## 4) V1 LLM chain smoke test
 
 ```powershell
-python adl-backend/v1_llm_smoke.py
+python -m tests.smoke.v1_llm_smoke
 ```
 
 Strict deepseek mode check:
 
 ```powershell
-python adl-backend/v1_llm_smoke.py --strict-deepseek
+python -m tests.smoke.v1_llm_smoke --strict-deepseek
 ```
 
 ## 5) Lightweight concurrency stress test
@@ -46,6 +47,6 @@ python adl-backend/v1_llm_smoke.py --strict-deepseek
 Run backend first, then:
 
 ```powershell
-python adl-backend/tick_concurrency_stress.py --url http://127.0.0.1:8001 --concurrency 10 --rounds 2
+python -m tests.stress.tick_concurrency_stress --url http://127.0.0.1:8001 --concurrency 10 --rounds 2
 ```
 

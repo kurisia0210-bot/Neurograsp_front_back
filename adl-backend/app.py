@@ -53,7 +53,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8001, help="Server port (default: 8001)")
 
     parser.add_argument("--pipeline", choices=["v1", "v2"], help="Reasoning pipeline")
-    parser.add_argument("--proposer", choices=["mock", "v1"], help="V2 proposer strategy")
+    parser.add_argument("--proposer", choices=["mock", "v1", "llm"], help="V2 proposer strategy")
     parser.add_argument("--mode", choices=["INSTRUCT", "ACT"], help="V2 execution mode")
     parser.add_argument("--mock-script", help="Path to V2 mock script json")
     parser.add_argument("--llm-mode", choices=["mock", "deepseek", "disabled"], help="LLM runtime mode")

@@ -7,11 +7,12 @@ P2 goals:
 - Add deterministic FinishGuard so completion is system-decided.
 
 Runtime switches:
-- REASONING_V2_PROPOSER=mock (default) | v1
+- REASONING_V2_PROPOSER=mock (default) | v1 | llm
 - REASONING_V2_MOCK_SCRIPT=<json_file_path>  # optional for golden tests
 - REASONING_V2_STAGNATION_WINDOW=4            # state stagnation window (N)
 - REASONING_V2_STAGNATION_OVERRIDE=THINK|SPEAK
 - REASONING_V2_EXECUTION_MODE=INSTRUCT(default)|ACT
+- REASONING_V2_MACRO_PLANNER=auto(default)|always|never
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from core.safety.guards_v2 import (
     StateStagnationGuard,
     build_state_stagnation_guard_from_env,
 )
-from core.pipeline.proposers_v2 import MockProposer, Proposer, V1Proposer, build_proposer_from_env
+from core.pipeline.proposers_v2 import LLMProposer, MockProposer, Proposer, V1Proposer, build_proposer_from_env
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -48,6 +49,7 @@ class ReasoningV2Pipeline:
         instruct_adapter: Optional[InstructAdapter] = None,
         complex_action_planner: Optional[ComplexActionPlanner] = None,
         execution_mode: Optional[str] = None,
+        macro_planner_mode: Optional[str] = None,
     ) -> None:
         self._proposer = proposer or build_proposer_from_env()
         self._finish_guard = finish_guard or FinishGuard()
@@ -57,6 +59,14 @@ class ReasoningV2Pipeline:
 
         mode_raw = (execution_mode or os.getenv("REASONING_V2_EXECUTION_MODE", "INSTRUCT")).strip().upper()
         self._execution_mode = "INSTRUCT" if mode_raw == "INSTRUCT" else "ACT"
+        planner_mode_raw = (macro_planner_mode or os.getenv("REASONING_V2_MACRO_PLANNER", "auto")).strip().lower()
+        if planner_mode_raw in {"auto", "always", "never"}:
+            self._macro_planner_mode = planner_mode_raw
+        else:
+            print(
+                f"[ReasoningV2] Unknown REASONING_V2_MACRO_PLANNER={planner_mode_raw!r}, fallback to 'auto'"
+            )
+            self._macro_planner_mode = "auto"
 
     async def propose(self, obs: ObservationPayload) -> ActionPayload:
         return await self._proposer.propose(obs)
@@ -70,6 +80,15 @@ class ReasoningV2Pipeline:
             return self._instruct_adapter.to_instruction(routed, obs)
         return routed
 
+    def _should_use_complex_planner(self) -> bool:
+        if self._macro_planner_mode == "always":
+            return True
+        if self._macro_planner_mode == "never":
+            return False
+        # auto mode: keep existing deterministic behavior for mock/v1,
+        # but allow llm proposer to receive task text directly.
+        return not isinstance(self._proposer, LLMProposer)
+
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
         finish_action = self._finish_guard.check(obs)
         if finish_action is not None:
@@ -79,7 +98,9 @@ class ReasoningV2Pipeline:
                 self._complex_action_planner.reset(obs.session_id, int(obs.episode_id))
             return finish_action
 
-        proposal = self._complex_action_planner.next_atomic(obs)
+        proposal = None
+        if self._should_use_complex_planner():
+            proposal = self._complex_action_planner.next_atomic(obs)
         if proposal is None:
             proposal = await self.propose(obs)
         check = await self.guard_check(proposal, obs)
@@ -106,6 +127,7 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
 __all__ = [
     "Proposer",
     "V1Proposer",
+    "LLMProposer",
     "MockProposer",
     "build_proposer_from_env",
     "GuardCheckResult",

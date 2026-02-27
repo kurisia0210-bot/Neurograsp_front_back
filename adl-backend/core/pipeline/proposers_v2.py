@@ -10,6 +10,9 @@ def build_proposer_from_env() -> Proposer:
     if proposer_name == "v1":
         print("[ReasoningV2] Proposer: V1Proposer")
         return V1Proposer()
+    if proposer_name == "llm":
+        print("[ReasoningV2] Proposer: LLMProposer")
+        return LLMProposer()
     if proposer_name != "mock":
         print(f"[ReasoningV2] Unknown proposer={proposer_name!r}, fallback to MockProposer")
     script_path = os.getenv("REASONING_V2_MOCK_SCRIPT", "").strip() or None

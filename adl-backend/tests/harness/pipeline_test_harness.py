@@ -4,6 +4,7 @@ Unified pipeline test harness for Reasoning v2.
 Usage:
     python pipeline_test_harness.py
     python pipeline_test_harness.py --proposer v1
+    python pipeline_test_harness.py --proposer llm
     python pipeline_test_harness.py --proposer mock --mock-script ./golden/mock_script.json
     python pipeline_test_harness.py --json
 """
@@ -26,7 +27,9 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from core.reasoning_v2 import MockProposer, ReasoningV2Pipeline, V1Proposer
+from core.reasoning_v2 import LLMProposer, MockProposer, ReasoningV2Pipeline, V1Proposer
+from core.pipeline.proposer.prompt_builder import LLMProposerPromptBuilder
+from core.pipeline.proposer.response_parser import LLMProposerResponseParser
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -81,6 +84,8 @@ class PipelineTestHarness:
         proposer_norm = proposer.strip().lower()
         if proposer_norm == "v1":
             return V1Proposer()
+        if proposer_norm == "llm":
+            return LLMProposer()
         return MockProposer(script_path=mock_script)
 
     def _make_obs(
@@ -461,6 +466,129 @@ class PipelineTestHarness:
                 actual=type(exc).__name__,
             )
 
+    async def test_llm_parser_blocks_finish(self) -> ComponentTestResult:
+        started = time.perf_counter()
+        name = "llm_parser_blocks_finish"
+        try:
+            obs = self._make_obs(session_id="llm-parser-finish", step_id=1)
+            parser = LLMProposerResponseParser()
+            action = parser.parse_to_action(obs, '{"type":"FINISH","content":"done"}')
+            action_type = action.type.value if hasattr(action.type, "value") else action.type
+            passed = action_type == "THINK" and "non-delegable" in (action.content or "").lower()
+            return ComponentTestResult(
+                name=name,
+                passed=passed,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail="LLM parser should block FINISH from proposer output.",
+                expected="type=THINK with non-delegable message",
+                actual=f"type={action_type}, content={action.content!r}",
+            )
+        except Exception as exc:
+            return ComponentTestResult(
+                name=name,
+                passed=False,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail=f"Exception: {exc}",
+                expected="No exception",
+                actual=type(exc).__name__,
+            )
+
+    async def test_llm_parser_rejects_unknown_type(self) -> ComponentTestResult:
+        started = time.perf_counter()
+        name = "llm_parser_rejects_unknown_type"
+        try:
+            obs = self._make_obs(session_id="llm-parser-unknown", step_id=1)
+            parser = LLMProposerResponseParser()
+            action = parser.parse_to_action(obs, '{"type":"HACK","content":"oops"}')
+            action_type = action.type.value if hasattr(action.type, "value") else action.type
+            passed = action_type == "THINK" and "unsupported proposer action type" in (
+                action.content or ""
+            ).lower()
+            return ComponentTestResult(
+                name=name,
+                passed=passed,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail="LLM parser should downgrade unknown action types to THINK.",
+                expected="type=THINK with unsupported-type message",
+                actual=f"type={action_type}, content={action.content!r}",
+            )
+        except Exception as exc:
+            return ComponentTestResult(
+                name=name,
+                passed=False,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail=f"Exception: {exc}",
+                expected="No exception",
+                actual=type(exc).__name__,
+            )
+
+    async def test_prompt_builder_goal_and_last_step(self) -> ComponentTestResult:
+        started = time.perf_counter()
+        name = "prompt_builder_goal_and_last_step"
+        try:
+            long_action = ("ACT " * 120) + "TAIL_ACTION_MARK"
+            long_failure = ("FAIL " * 140) + "TAIL_FAILURE_MARK"
+            obs = ObservationPayload(
+                session_id="prompt-session",
+                episode_id=1,
+                step_id=7,
+                timestamp=time.time(),
+                agent={"location": "table_center", "holding": "red_cube"},
+                nearby_objects=[
+                    {"id": "red_cube", "state": "in_hand", "relation": "hand"},
+                    {"id": "fridge_door", "state": "closed", "relation": "front"},
+                    {"id": "fridge_main", "state": "installed", "relation": "storage"},
+                ],
+                global_task="Put red cube in fridge",
+                goal_spec={
+                    "goal_type": "PUT_IN",
+                    "goal_id": "goal_put_in_fridge",
+                    "dsl": "inside(red_cube, fridge_main)",
+                    "params": {"item": "red_cube", "container": "fridge_main"},
+                },
+                last_action={
+                    "session_id": "prompt-session",
+                    "episode_id": 1,
+                    "step_id": 6,
+                    "type": "INTERACT",
+                    "target_item": "fridge_main",
+                    "interaction_type": "PLACE",
+                    "content": long_action,
+                },
+                last_result={
+                    "success": False,
+                    "failure_type": "REFLEX_BLOCK",
+                    "failure_reason": long_failure,
+                },
+            )
+            builder = LLMProposerPromptBuilder()
+            messages = builder.build_messages(obs)
+            user_msg = messages[1]["content"]
+            passed = (
+                "goal_spec=" in user_msg
+                and "last_action=(" in user_msg
+                and "last_result=(" in user_msg
+                and "TAIL_ACTION_MARK" not in user_msg
+                and "TAIL_FAILURE_MARK" not in user_msg
+            )
+            return ComponentTestResult(
+                name=name,
+                passed=passed,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail="Prompt should prioritize goal_spec and include bounded last-step context.",
+                expected="goal_spec + last_action/last_result present; long tails truncated",
+                actual=f"user_msg_preview={user_msg[:240]!r}",
+            )
+        except Exception as exc:
+            return ComponentTestResult(
+                name=name,
+                passed=False,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                detail=f"Exception: {exc}",
+                expected="No exception",
+                actual=type(exc).__name__,
+            )
+
     async def run_all(self) -> List[ComponentTestResult]:
         tests: List[Callable[[], Awaitable[ComponentTestResult]]] = [
             self.test_stage1_proposer,
@@ -472,6 +600,9 @@ class PipelineTestHarness:
             self.test_instruct_adapter,
             self.test_complex_put_in_sequence,
             self.test_end_to_end,
+            self.test_llm_parser_blocks_finish,
+            self.test_llm_parser_rejects_unknown_type,
+            self.test_prompt_builder_goal_and_last_step,
         ]
         tests.extend(self._custom_tests.values())
 
@@ -530,7 +661,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--proposer",
         default="mock",
-        choices=["mock", "v1"],
+        choices=["mock", "v1", "llm"],
         help="Which proposer strategy to test.",
     )
     parser.add_argument(
