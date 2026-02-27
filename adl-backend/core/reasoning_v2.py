@@ -85,9 +85,10 @@ class ReasoningV2Pipeline:
             return True
         if self._macro_planner_mode == "never":
             return False
-        # auto mode: keep existing deterministic behavior for mock/v1,
-        # but allow llm proposer to receive task text directly.
-        return not isinstance(self._proposer, LLMProposer)
+        # auto mode: always try deterministic planner first.
+        # ComplexActionPlanner only emits for supported macro goals
+        # (currently PUT_IN / OPEN_THEN_PUT_IN), otherwise returns None.
+        return True
 
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
         finish_action = self._finish_guard.check(obs)
@@ -138,3 +139,4 @@ __all__ = [
     "ReasoningV2Pipeline",
     "analyze_and_propose",
 ]
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
@@ -89,6 +89,11 @@ class ComplexActionPlanner:
 
     def _build_plan_state(self, goal: GoalSpec, obs: ObservationPayload, signature: str) -> Optional[_PlanState]:
         if goal.goal_type == "PUT_IN":
+            container = goal.params.get("container", "fridge_main")
+            # Keep deterministic short-circuit only for fridge placement.
+            # Other containers should be handled by proposer (e.g., LLMProposer).
+            if container != "fridge_main":
+                return None
             steps = deque(self._plan_put_in(goal))
             state = _PlanState(signature=signature, steps=steps)
             self._consume_completed_steps(state, obs)
@@ -217,3 +222,4 @@ class ComplexActionPlanner:
 
 
 __all__ = ["AtomicActionSpec", "ComplexActionPlanner"]
+

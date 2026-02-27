@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+﻿import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
@@ -329,7 +329,7 @@ export function AgentPlayground({ onBack }) {
             position={cube.position}
             dragHeight={cube.dragHeight}
             isHeldByAgent={cube.state === 'in_hand'}
-            allowClickThroughWhileDragging={true}
+            allowClickThroughWhileDragging={false}
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
@@ -450,3 +450,4 @@ export function AgentPlayground({ onBack }) {
     </div>
   )
 }
+
