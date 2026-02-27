@@ -89,15 +89,8 @@ class ComplexActionPlanner:
 
     def _build_plan_state(self, goal: GoalSpec, obs: ObservationPayload, signature: str) -> Optional[_PlanState]:
         if goal.goal_type == "PUT_IN":
-            container = goal.params.get("container", "fridge_main")
-            # Keep deterministic short-circuit only for fridge placement.
-            # Other containers should be handled by proposer (e.g., LLMProposer).
-            if container != "fridge_main":
-                return None
-            steps = deque(self._plan_put_in(goal))
-            state = _PlanState(signature=signature, steps=steps)
-            self._consume_completed_steps(state, obs)
-            return state
+            # PUT_IN short-circuit disabled: delegate to proposer/LLM.
+            return None
 
         if goal.goal_type == "OPEN_THEN_PUT_IN":
             steps = deque(self._plan_open_then_put_in(goal))
@@ -222,4 +215,5 @@ class ComplexActionPlanner:
 
 
 __all__ = ["AtomicActionSpec", "ComplexActionPlanner"]
+
 
