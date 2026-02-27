@@ -6,7 +6,7 @@ Feature flag:
 - REASONING_PIPELINE=v2
 
 For v2 proposer strategy:
-- REASONING_V2_PROPOSER=mock (default) | v1
+- REASONING_V2_PROPOSER=mock (default) | v1 | llm
 - REASONING_V2_MOCK_SCRIPT=<json_file_path> (optional)
 
 For v2 guard strategy:
@@ -15,6 +15,9 @@ For v2 guard strategy:
 
 For v2 output adapter:
 - REASONING_V2_EXECUTION_MODE=INSTRUCT(default)|ACT (optional)
+
+For v2 macro planner precedence:
+- REASONING_V2_MACRO_PLANNER=auto(default)|always|never (optional)
 """
 
 import os

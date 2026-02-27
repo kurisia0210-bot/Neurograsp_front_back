@@ -8,6 +8,7 @@ venv/
 .venv/
 .env
 .DS_Store
+chroma_db/          # Chroma向量数据库文件
 
 # ==========================
 # Node / Frontend
