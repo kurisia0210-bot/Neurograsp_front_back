@@ -40,6 +40,16 @@ export function useAgentSystem({
     agentStateRef.current = agentState
   }, [agentState])
 
+  const commitAgentStateMirror = useCallback((nextState) => {
+    const prev = agentStateRef.current
+    if (prev.location === nextState.location && prev.holding === nextState.holding) {
+      return prev
+    }
+    agentStateRef.current = nextState
+    setAgentState(nextState)
+    return nextState
+  }, [])
+
   const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
     const nearby = worldState?.nearby_objects || []
     const objects = {}
@@ -94,11 +104,16 @@ export function useAgentSystem({
     const effectiveHolding = Object.prototype.hasOwnProperty.call(worldAgent, 'holding')
       ? worldAgent.holding
       : state.holding
+    const effectiveAgentState = {
+      location: effectiveLocation || 'table_center',
+      holding: effectiveHolding ?? null
+    }
+    commitAgentStateMirror(effectiveAgentState)
 
     // 使用传入的resolveGoalSpec函数，如果没有则使用默认的
     const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
     const parsedGoalSpec = typeof goalResolver === 'function'
-      ? goalResolver(userInstruction, state, worldState)
+      ? goalResolver(userInstruction, effectiveAgentState, worldState)
       : null
 
     const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
@@ -110,8 +125,8 @@ export function useAgentSystem({
       step_id: stepCounterRef.current,
       timestamp: Date.now() / 1000,
       agent: {
-        location: effectiveLocation,
-        holding: effectiveHolding
+        location: effectiveAgentState.location,
+        holding: effectiveAgentState.holding
       },
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
@@ -121,16 +136,24 @@ export function useAgentSystem({
       last_action: lastAction,
       last_result: lastResult
     }
-  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts])
+  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts, commitAgentStateMirror])
 
   const executeAction = useCallback((actionPayload) => {
     console.log('[AgentSystem] Executing:', actionPayload)
 
     const newAgentState = { ...agentStateRef.current }
+    let worldExecutionResult = { success: true }
+    const shouldExecuteWorldAction = executeWorldAction && (
+      actionPayload?.type === 'INTERACT' || actionPayload?.type === 'MOVE_TO'
+    )
+
+    if (shouldExecuteWorldAction) {
+      worldExecutionResult = executeWorldAction(actionPayload, newAgentState) || { success: true }
+    }
 
     switch (actionPayload.type) {
       case 'MOVE_TO':
-        if (actionPayload.target_poi) {
+        if (actionPayload.target_poi && worldExecutionResult.success) {
           newAgentState.location = actionPayload.target_poi
         }
         break
@@ -138,11 +161,6 @@ export function useAgentSystem({
       case 'INTERACT': {
         const interactionType = actionPayload.interaction_type || 'NONE'
         const targetItem = actionPayload.target_item
-        let worldExecutionResult = { success: true }
-
-        if (executeWorldAction) {
-          worldExecutionResult = executeWorldAction(actionPayload, newAgentState) || { success: true }
-        }
 
         if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
           newAgentState.holding = targetItem
@@ -162,12 +180,22 @@ export function useAgentSystem({
         console.warn('Unknown action type:', actionPayload.type)
     }
 
-    agentStateRef.current = newAgentState
-    setAgentState(newAgentState)
-    onActionExecuted(actionPayload, newAgentState)
+    if (getWorldState) {
+      const worldStateAfterAction = getWorldState(newAgentState)
+      const worldAgent = worldStateAfterAction?.agent || {}
+      if (worldAgent.location) {
+        newAgentState.location = worldAgent.location
+      }
+      if (Object.prototype.hasOwnProperty.call(worldAgent, 'holding')) {
+        newAgentState.holding = worldAgent.holding
+      }
+    }
 
-    return newAgentState
-  }, [executeWorldAction, onActionExecuted])
+    const committedState = commitAgentStateMirror(newAgentState)
+    onActionExecuted(actionPayload, committedState, worldExecutionResult)
+
+    return committedState
+  }, [executeWorldAction, getWorldState, onActionExecuted, commitAgentStateMirror])
 
   const recordManualExecution = useCallback((actionPayload, executionResult = null) => {
     if (!actionPayload || typeof actionPayload !== 'object') return

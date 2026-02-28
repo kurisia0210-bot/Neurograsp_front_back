@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
