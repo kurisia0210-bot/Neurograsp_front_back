@@ -20,6 +20,19 @@ import { useWorldStateManager } from '../components/game/mechanics/WorldStateMan
 
 const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
+const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
+const FRIDGE_MAIN_DROP_HALF_SIZE = [0.55, 0.45] // smaller snap zone [halfX, halfZ]
+const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+
+function isInFridgeMainDropZone(position) {
+  if (!Array.isArray(position)) return false
+  const [x, , z] = position
+  return (
+    Math.abs(x - FRIDGE_MAIN_DROP_CENTER[0]) <= FRIDGE_MAIN_DROP_HALF_SIZE[0] &&
+    Math.abs(z - FRIDGE_MAIN_DROP_CENTER[1]) <= FRIDGE_MAIN_DROP_HALF_SIZE[1]
+  )
+}
+
 function getVisualTargetPosition(location) {
   if (location === 'fridge_zone') return [-2, 0, 1]
   if (location === 'stove_zone') return [2, 0, 1]
@@ -66,7 +79,8 @@ function getBehaviorText(intent) {
 }
 
 export function AgentPlayground({ onBack }) {
-    const worldStateManager = useWorldStateManager({
+  const autoSnapLockRef = React.useRef(false)
+  const worldStateManager = useWorldStateManager({
     initialFridgeOpen: false,
     initialCubes: [
       {
@@ -166,6 +180,7 @@ export function AgentPlayground({ onBack }) {
   }
 
   const handleResetAgent = () => {
+    autoSnapLockRef.current = false
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
     setIntentHistory([])
@@ -330,8 +345,36 @@ export function AgentPlayground({ onBack }) {
               worldStateManager.setCubes((prev) =>
                 prev.map((c) => (c.id === cube.id ? { ...c, position: nextPosition } : c))
               )
+
+              if (autoSnapLockRef.current) return
+              if (cube.state !== 'in_hand') return
+              if (!worldStateManager.fridgeOpen) return
+              if (!isInFridgeMainDropZone(nextPosition)) return
+
+              autoSnapLockRef.current = true
+              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              agentSystem.recordManualExecution(
+                {
+                  type: 'INTERACT',
+                  target_item: 'fridge_main',
+                  interaction_type: 'PLACE',
+                  content: `Manual place ${cube.id} into fridge_main (auto snap)`
+                },
+                {
+                  success: true,
+                  failure_type: null,
+                  failure_reason: ''
+                }
+              )
+              setActionBubble({
+                visible: true,
+                status: 'SUCCESS',
+                message: `Auto snap: ${cube.id} -> fridge_main`
+              })
+              setBehaviorLine(`Action: place ${cube.id} -> fridge_main (auto snap)`)
             }}
             onPickUp={() => {
+              autoSnapLockRef.current = false
               worldStateManager.pickUpCube(cube.id)
               agentSystem.recordManualExecution(
                 {
@@ -348,12 +391,16 @@ export function AgentPlayground({ onBack }) {
               )
             }}
             onPlace={() => {
+              if (autoSnapLockRef.current) {
+                autoSnapLockRef.current = false
+                return
+              }
+
               const currentPos = cube.position
-              const inFridgeZone =
-                Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
+              const inFridgeZone = isInFridgeMainDropZone(currentPos)
 
               if (inFridgeZone) {
-                worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
+                worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
                 agentSystem.recordManualExecution(
                   {
                     type: 'INTERACT',
@@ -388,6 +435,18 @@ export function AgentPlayground({ onBack }) {
             slicingZoneSize={[1, 1]}
           />
         ))}
+
+        <mesh position={[FRIDGE_MAIN_DROP_CENTER[0], 1.15, FRIDGE_MAIN_DROP_CENTER[1]]}>
+          <boxGeometry
+            args={[FRIDGE_MAIN_DROP_HALF_SIZE[0] * 2, 1.1, FRIDGE_MAIN_DROP_HALF_SIZE[1] * 2]}
+          />
+          <meshStandardMaterial
+            color={worldStateManager.fridgeOpen ? '#22c55e' : '#64748b'}
+            transparent
+            opacity={worldStateManager.fridgeOpen ? 0.18 : 0.08}
+            wireframe
+          />
+        </mesh>
 
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
