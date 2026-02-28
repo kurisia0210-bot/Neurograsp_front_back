@@ -22,6 +22,26 @@ const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [0.55, 0.45] // smaller snap zone [halfX, halfZ]
+const PIPELINE_MODE_STORAGE_KEY = 'agent_playground_pipeline_mode'
+
+function resolveInitialPipelineMode() {
+  try {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search || '')
+      const modeFromQuery = params.get('agentPipeline')
+      if (modeFromQuery === 'legacy' || modeFromQuery === 'registry') {
+        return modeFromQuery
+      }
+      const modeFromStorage = window.localStorage.getItem(PIPELINE_MODE_STORAGE_KEY)
+      if (modeFromStorage === 'legacy' || modeFromStorage === 'registry') {
+        return modeFromStorage
+      }
+    }
+  } catch (error) {
+    console.warn('[AgentPlayground] pipeline mode resolve failed:', error)
+  }
+  return 'registry'
+}
 
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
@@ -98,11 +118,14 @@ export function AgentPlayground({ onBack }) {
   const [intentHistory, setIntentHistory] = useState([])
   const [actionBubble, setActionBubble] = useState({
     visible: false,
+    verdict: null,
     status: 'NO_INTENT',
     message: ''
   })
   const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
   const [dragPreviewByCube, setDragPreviewByCube] = useState({})
+  const [pipelineMode, setPipelineMode] = useState(resolveInitialPipelineMode)
+  const useRegistryPipeline = pipelineMode === 'registry'
   const getWorldFacts = worldStateManager.getWorldFacts
 
   const triggerArrowAnimation = () => {
@@ -112,16 +135,12 @@ export function AgentPlayground({ onBack }) {
 
   const validateIntentWithRegistry = useCallback((intent) => {
     const worldFacts = getWorldFacts()
-    const fridgeDoor = worldFacts?.nearby_objects?.find((obj) => obj.id === 'fridge_door')
-    return executeRegisteredAction(intent, {
-      holdingItem: worldFacts?.agent?.holding || null,
-      fridgeOpen: fridgeDoor?.state === 'open'
-    })
+    return executeRegisteredAction(intent, worldFacts)
   }, [getWorldFacts])
 
   const agentSystem = useAgentSystem({
     initialTask: 'Put red cube in fridge',
-    validateAction: validateIntentWithRegistry,
+    validateAction: useRegistryPipeline ? validateIntentWithRegistry : undefined,
     onTickComplete: (response) => {
       if (!response?.intent) return
 
@@ -132,6 +151,7 @@ export function AgentPlayground({ onBack }) {
       if (response?.reflex_verdict?.verdict === 'BLOCK') {
         setActionBubble({
           visible: true,
+          verdict: 'BLOCK',
           status: 'REFLEX_BLOCK',
           message: response?.reflex_verdict?.message || 'Blocked by backend reflex'
         })
@@ -142,23 +162,31 @@ export function AgentPlayground({ onBack }) {
 
       setBehaviorLine(getBehaviorText(action))
 
-      const registryAllowed = !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
+      const registryAllowed = registryResult?.verdict
+        ? registryResult.verdict === 'ALLOW'
+        : !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
       const didExecute = executionResult?.success !== false
       if ((action?.type === 'MOVE_TO' || action?.type === 'INTERACT') && registryAllowed && didExecute) {
         triggerArrowAnimation()
       }
 
-      let bubbleStatus = 'SUCCESS'
-      let bubbleMessage = registryResult?.message || 'Action applied'
+      let bubbleVerdict = registryAllowed ? 'ALLOW' : 'BLOCK'
+      let bubbleStatus = registryAllowed ? 'SUCCESS' : 'BLOCKED_BY_REGISTRY'
+      let bubbleMessage = useRegistryPipeline
+        ? registryResult?.reason || registryResult?.message || 'Action applied'
+        : 'Legacy pipeline: action executed'
       if (!registryAllowed) {
+        bubbleVerdict = 'BLOCK'
         bubbleStatus = registryResult?.status || 'BLOCKED_BY_REGISTRY'
-        bubbleMessage = registryResult?.message || 'Action blocked by registry'
+        bubbleMessage = registryResult?.reason || registryResult?.message || 'Action blocked by registry'
       } else if (executionResult?.success === false) {
+        bubbleVerdict = 'BLOCK'
         bubbleStatus = 'EXECUTION_FAILED'
         bubbleMessage = executionResult?.failure_reason || 'Action execution failed'
       }
       setActionBubble({
         visible: true,
+        verdict: bubbleVerdict,
         status: bubbleStatus,
         message: bubbleMessage
       })
@@ -169,7 +197,10 @@ export function AgentPlayground({ onBack }) {
   const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
 
   const runManualIntent = useCallback((intent) => {
-    const summary = agentSystem.executeAction(intent)
+    const summary = agentSystem.executeAction(
+      intent,
+      useRegistryPipeline ? undefined : { skipRegistry: true }
+    )
     const executionResult = summary?.executionResult || {
       success: false,
       failure_type: 'REASONING_ERROR',
@@ -177,7 +208,17 @@ export function AgentPlayground({ onBack }) {
     }
     agentSystem.recordManualExecution(intent, executionResult)
     return summary
-  }, [agentSystem.executeAction, agentSystem.recordManualExecution])
+  }, [agentSystem.executeAction, agentSystem.recordManualExecution, useRegistryPipeline])
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(PIPELINE_MODE_STORAGE_KEY, pipelineMode)
+      }
+    } catch (error) {
+      console.warn('[AgentPlayground] pipeline mode persist failed:', error)
+    }
+  }, [pipelineMode])
 
   useEffect(() => {
     if (!actionBubble.visible) return
@@ -212,9 +253,16 @@ export function AgentPlayground({ onBack }) {
   const resetActionBubble = () => {
     setActionBubble({
       visible: false,
+      verdict: null,
       status: 'NO_INTENT',
       message: ''
     })
+  }
+
+  const handlePipelineModeChange = (mode) => {
+    if (mode !== 'registry' && mode !== 'legacy') return
+    setPipelineMode(mode)
+    resetActionBubble()
   }
 
   const handleResetAgent = () => {
@@ -265,6 +313,26 @@ export function AgentPlayground({ onBack }) {
       </div>
 
       <ActionTriggerBubble bubble={actionBubble} />
+
+      <div className="absolute top-20 right-4 z-50 bg-black/75 border border-gray-600 rounded-md px-2 py-1 text-[10px] text-gray-200 flex items-center gap-2">
+        <span className="text-gray-400">Pipeline</span>
+        <button
+          onClick={() => handlePipelineModeChange('registry')}
+          className={`px-2 py-0.5 rounded transition-colors ${
+            useRegistryPipeline ? 'bg-emerald-600 text-white' : 'bg-gray-700 text-gray-200'
+          }`}
+        >
+          Registry
+        </button>
+        <button
+          onClick={() => handlePipelineModeChange('legacy')}
+          className={`px-2 py-0.5 rounded transition-colors ${
+            !useRegistryPipeline ? 'bg-amber-600 text-white' : 'bg-gray-700 text-gray-200'
+          }`}
+        >
+          Legacy
+        </button>
+      </div>
 
       <AgentControls
         onTick={agentSystem.tick}

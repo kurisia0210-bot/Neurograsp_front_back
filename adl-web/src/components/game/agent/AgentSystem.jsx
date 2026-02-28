@@ -79,34 +79,43 @@ export function useAgentSystem({
   const runRegistryValidation = useCallback((actionPayload) => {
     if (typeof validateAction !== 'function') {
       return {
+        verdict: 'ALLOW',
+        reason: 'Registry validation skipped',
+        effects: [],
         handled: true,
         status: 'SUCCESS',
         message: 'Registry validation skipped'
       }
     }
     try {
+      const snapshot = readWorldSnapshot()
       const result = validateAction(actionPayload, {
-        agentState: readWorldSnapshot().agent,
-        lastObservation,
-        lastAction,
-        lastResult
+        ...snapshot.worldState,
+        last_action: lastAction,
+        last_result: lastResult
       })
       if (result && typeof result === 'object') {
         return result
       }
       return {
+        verdict: 'BLOCK',
+        reason: 'Registry returned invalid validation result',
+        effects: [],
         handled: false,
         status: 'INVALID_REGISTRY_RESULT',
         message: 'Registry returned invalid validation result'
       }
     } catch (e) {
       return {
+        verdict: 'BLOCK',
+        reason: e?.message || 'Registry validation crashed',
+        effects: [],
         handled: false,
         status: 'REGISTRY_RUNTIME_ERROR',
         message: e?.message || 'Registry validation crashed'
       }
     }
-  }, [validateAction, readWorldSnapshot, lastObservation, lastAction, lastResult])
+  }, [validateAction, readWorldSnapshot, lastAction, lastResult])
 
   const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
     const nearby = worldState?.nearby_objects || []
@@ -186,15 +195,24 @@ export function useAgentSystem({
     console.log('[AgentSystem] Executing:', actionPayload)
     const skipRegistry = !!options.skipRegistry
     const registryResult = skipRegistry
-      ? { handled: true, status: 'SUCCESS', message: 'Registry validation skipped by option' }
+      ? {
+          verdict: 'ALLOW',
+          reason: 'Registry validation skipped by option',
+          effects: [],
+          handled: true,
+          status: 'SUCCESS',
+          message: 'Registry validation skipped by option'
+        }
       : runRegistryValidation(actionPayload)
-    const isAllowedByRegistry = !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
+    const isAllowedByRegistry = registryResult?.verdict
+      ? registryResult.verdict === 'ALLOW'
+      : !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
 
     if (!isAllowedByRegistry) {
       const blockedResult = {
         success: false,
         failure_type: 'REFLEX_BLOCK',
-        failure_reason: registryResult?.message || 'Blocked by registry'
+        failure_reason: registryResult?.reason || registryResult?.message || 'Blocked by registry'
       }
       const blockedAgentState = readWorldSnapshot().agent
       onActionExecuted(actionPayload, blockedAgentState, blockedResult, registryResult)
