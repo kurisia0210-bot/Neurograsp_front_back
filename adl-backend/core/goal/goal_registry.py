@@ -560,13 +560,21 @@ class GoalRegistry:
         - dsl (optional)
         - params (optional dict)
         """
+        print(f"[DEBUG GoalRegistry] resolve_with_hint: task={task!r}, hint={goal_hint}")
         try:
             hinted = self._resolve_from_hint(goal_hint)
         except Exception:
             hinted = None
         if hinted is not None:
+            print(f"[DEBUG GoalRegistry] resolved from hint: {hinted.goal_type}, {hinted.dsl}")
             return hinted
-        return self.resolve(task)
+        print(f"[DEBUG GoalRegistry] falling back to task text: {task}")
+        result = self.resolve(task)
+        if result:
+            print(f"[DEBUG GoalRegistry] resolved from task: {result.goal_type}, {result.dsl}")
+        else:
+            print(f"[DEBUG GoalRegistry] failed to resolve task")
+        return result
 
     def validate(self, goal: GoalSpec) -> GoalValidationResult:
         return self._handler_for(goal.goal_type).validate(goal)

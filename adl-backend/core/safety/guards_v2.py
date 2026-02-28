@@ -242,16 +242,19 @@ class StateStagnationGuard:
             resolved = self._registry.resolve_with_hint(obs.global_task, getattr(obs, "goal_spec", None))
             if resolved is not None:
                 identity = f"goal={resolved.goal_id}"
+                print(f"[DEBUG StateStagnationGuard] task_signature_key: source={source}, resolved={resolved.goal_type}, goal_id={resolved.goal_id}, dsl={resolved.dsl}")
                 self._goal_identity_cache[key] = (source, identity)
                 return identity
 
         resolved = self._registry.resolve_with_hint(obs.global_task, getattr(obs, "goal_spec", None))
         if resolved is not None:
+            print(f"[DEBUG StateStagnationGuard] task_signature_key (no episode): resolved={resolved.goal_type}, goal_id={resolved.goal_id}, dsl={resolved.dsl}")
             return f"goal={resolved.goal_id}"
 
         text = (obs.global_task or "").strip().lower()
         text = re.sub(r"\d+", "#", text)
         text = re.sub(r"\s+", " ", text)
+        print(f"[DEBUG StateStagnationGuard] task_signature_key: using raw task text: {text}")
         return f"raw={text}"
 
     @staticmethod

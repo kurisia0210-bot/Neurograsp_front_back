@@ -21,6 +21,7 @@ import os
 from typing import Optional
 
 from core.pipeline.adapters_v2 import InstructAdapter
+from core.pipeline.common_v2 import make_action
 from core.pipeline.complex_actions_v2 import ComplexActionPlanner
 from core.safety.guards_v2 import (
     FinishGuard,
@@ -90,7 +91,26 @@ class ReasoningV2Pipeline:
         # (currently PUT_IN / OPEN_THEN_PUT_IN), otherwise returns None.
         return True
 
+    @staticmethod
+    def _debounce_redundant_move(proposal: ActionPayload, obs: ObservationPayload) -> ActionPayload:
+        action_type = proposal.type.value if hasattr(proposal.type, "value") else proposal.type
+        if action_type != "MOVE_TO":
+            return proposal
+
+        target_poi = proposal.target_poi.value if hasattr(proposal.target_poi, "value") else proposal.target_poi
+        current_location = (
+            obs.agent.location.value if hasattr(obs.agent.location, "value") else obs.agent.location
+        )
+        if target_poi and current_location and target_poi == current_location:
+            return make_action(
+                obs,
+                type="THINK",
+                content=f"Debounce: already at {target_poi}, skip repeated MOVE_TO.",
+            )
+        return proposal
+
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
+        print(f"[DEBUG ReasoningV2] analyze_and_propose: goal_spec={obs.goal_spec}")
         finish_action = self._finish_guard.check(obs)
         if finish_action is not None:
             if obs.episode_id is not None:
@@ -104,12 +124,14 @@ class ReasoningV2Pipeline:
             proposal = self._complex_action_planner.next_atomic(obs)
         if proposal is None:
             proposal = await self.propose(obs)
+        proposal = self._debounce_redundant_move(proposal, obs)
         check = await self.guard_check(proposal, obs)
         action = await self.actuation_route(check, obs)
         if self._is_finish_action(action) and obs.episode_id is not None:
             self._finish_guard.reset(obs.session_id, int(obs.episode_id))
             self._state_guard.reset(obs.session_id, int(obs.episode_id))
             self._complex_action_planner.reset(obs.session_id, int(obs.episode_id))
+        print(f"[DEBUG ReasoningV2] final action: {action.type}, content={action.content}")
         return action
 
     @staticmethod

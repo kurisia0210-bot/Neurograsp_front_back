@@ -28,6 +28,17 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
             f"last_action.content={obs.last_action.content!r}"
         )
 
+    goal_type = None
+    goal_id = None
+    if obs.goal_spec is not None:
+        goal_type = getattr(obs.goal_spec, "goal_type", None)
+        goal_id = getattr(obs.goal_spec, "goal_id", None)
+    print(
+        "[Tick Goal] "
+        f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
+        f"goal_type={goal_type!r} goal_id={goal_id!r} global_task={obs.global_task!r}"
+    )
+
     # 1) Commit previous staged action with current observation as post-state
     episodic_memory.commit(obs)
 

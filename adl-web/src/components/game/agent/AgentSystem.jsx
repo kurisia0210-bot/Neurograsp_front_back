@@ -130,6 +130,27 @@ export function useAgentSystem({
     return newAgentState
   }, [executeWorldAction, onActionExecuted])
 
+  const recordManualExecution = useCallback((actionPayload, executionResult = null) => {
+    if (!actionPayload || typeof actionPayload !== 'object') return
+
+    const normalizedAction = {
+      session_id: sessionIdRef.current,
+      episode_id: episodeIdRef.current,
+      step_id: stepCounterRef.current,
+      interaction_type: 'NONE',
+      ...actionPayload
+    }
+
+    const normalizedResult = executionResult || {
+      success: true,
+      failure_type: null,
+      failure_reason: ''
+    }
+
+    setLastAction(normalizedAction)
+    setLastResult(normalizedResult)
+  }, [])
+
   const tick = useCallback(async () => {
     if (isThinking) return
     setIsThinking(true)
@@ -260,7 +281,8 @@ export function useAgentSystem({
     setUserInstruction,
 
     perceiveWorld,
-    executeAction
+    executeAction,
+    recordManualExecution
   }
 }
 
@@ -284,4 +306,3 @@ export function useAgentSystemContext() {
   }
   return context
 }
-

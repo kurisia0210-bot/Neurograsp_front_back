@@ -71,11 +71,13 @@ class LLMProposer:
         返回：
         - ActionPayload: 解析后的动作，如果解析失败则返回THINK动作
         """
+        print(f"[DEBUG LLMProposer] propose: goal_spec={obs.goal_spec}")
         # 步骤1：构建LLM提示词
         messages = self._prompt_builder.build_messages(obs)
         
         # 步骤2：调用LLM服务
         raw = await get_completion(messages, model=self._model, temperature=self._temperature)
         
+        print(f"[DEBUG LLMProposer] raw response: {raw[:200]}")
         # 步骤3：解析响应
         return self._response_parser.parse_to_action(obs, raw)
