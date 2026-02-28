@@ -123,6 +123,10 @@ class ObservationPayload(BaseModel):
         default=None,
         description="Optional structured goal hint to avoid per-tick NL parsing"
     )
+    task_facts: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional task-relevant structured world facts for deterministic grounding"
+    )
 
     # P0-2: previous-step closure data
     last_action: Optional["ActionPayload"] = Field(

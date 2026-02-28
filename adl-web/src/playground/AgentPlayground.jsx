@@ -79,7 +79,7 @@ function getBehaviorText(intent) {
 }
 
 export function AgentPlayground({ onBack }) {
-  const autoSnapLockRef = React.useRef(false)
+  const autoSnapLockRef = useRef(false)
   const worldStateManager = useWorldStateManager({
     initialFridgeOpen: false,
     initialCubes: [

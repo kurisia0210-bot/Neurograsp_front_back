@@ -40,6 +40,43 @@ export function useAgentSystem({
     agentStateRef.current = agentState
   }, [agentState])
 
+  const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
+    const nearby = worldState?.nearby_objects || []
+    const objects = {}
+    const inside = {}
+    const on = {}
+
+    nearby.forEach((obj) => {
+      if (!obj?.id) return
+      const relationText = String(obj.relation || '')
+      objects[obj.id] = {
+        state: obj.state || null,
+        relation: relationText || null
+      }
+
+      const insideMatch = relationText.match(/inside\s+([a-zA-Z0-9_]+)/i)
+      if (insideMatch?.[1]) {
+        inside[obj.id] = insideMatch[1]
+      }
+      const onMatch = relationText.match(/on\s+([a-zA-Z0-9_]+)/i)
+      if (onMatch?.[1]) {
+        on[obj.id] = onMatch[1]
+      }
+    })
+
+    return {
+      agent: {
+        location: effectiveLocation || null,
+        holding: effectiveHolding || null
+      },
+      objects,
+      relations: {
+        inside,
+        on
+      }
+    }
+  }, [])
+
   const perceiveWorld = useCallback((customState = null) => {
     const state = customState || agentStateRef.current
 
@@ -65,6 +102,7 @@ export function useAgentSystem({
       : null
 
     const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
+    const taskFacts = worldState?.task_facts || buildTaskFacts(worldState, effectiveLocation, effectiveHolding)
 
     return {
       session_id: sessionIdRef.current,
@@ -78,11 +116,12 @@ export function useAgentSystem({
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
       goal_spec: goalSpec,
+      task_facts: taskFacts,
       // P0-2 feed previous action/result back to backend
       last_action: lastAction,
       last_result: lastResult
     }
-  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult])
+  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts])
 
   const executeAction = useCallback((actionPayload) => {
     console.log('[AgentSystem] Executing:', actionPayload)

@@ -5,6 +5,7 @@ import os
 import time
 from typing import Any, Dict
 
+from core.runtime.task_facts import summarize_task_facts
 
 def _enum_to_value(value: Any) -> Any:
     return value.value if hasattr(value, "value") else value
@@ -81,6 +82,7 @@ def emit_step_summary(
             "last_result": _safe_result(getattr(obs, "last_result", None)),
             "agent_location": _enum_to_value(getattr(getattr(obs, "agent", None), "location", None)),
             "agent_holding": _enum_to_value(getattr(getattr(obs, "agent", None), "holding", None)),
+            "task_facts": summarize_task_facts(obs),
         },
         "output": {
             "intent": _safe_action(intent),

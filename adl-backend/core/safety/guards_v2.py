@@ -8,6 +8,7 @@ from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
+from core.runtime.task_facts import get_agent_holding, get_agent_location, get_object_state_relation
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -184,8 +185,8 @@ class StateStagnationGuard:
 
     def _state_signature(self, obs: ObservationPayload) -> str:
         episode_id = int(obs.episode_id)
-        location = obs.agent.location.value if hasattr(obs.agent.location, "value") else obs.agent.location
-        holding = obs.agent.holding.value if hasattr(obs.agent.holding, "value") else obs.agent.holding
+        location = get_agent_location(obs)
+        holding = get_agent_holding(obs)
 
         red_cube_state, red_cube_rel = self._object_state_and_relation(obs, episode_id, "red_cube")
         door_state, _ = self._object_state_and_relation(obs, episode_id, "fridge_door")
@@ -216,14 +217,11 @@ class StateStagnationGuard:
         self, obs: ObservationPayload, episode_id: int, item_id: str
     ) -> Tuple[str, str]:
         cache_key = (obs.session_id, episode_id, item_id)
-        for obj in obs.nearby_objects:
-            oid = obj.id.value if hasattr(obj.id, "value") else obj.id
-            if oid == item_id:
-                state = obj.state.value if hasattr(obj.state, "value") else obj.state
-                relation = (obj.relation or "").strip().lower()
-                result = (str(state), relation)
-                self._last_known_object_state[cache_key] = result
-                return result
+        state, relation = get_object_state_relation(obs, item_id)
+        if state != "MISSING" or relation:
+            result = (state, relation)
+            self._last_known_object_state[cache_key] = result
+            return result
 
         cached = self._last_known_object_state.get(cache_key)
         if cached is not None:

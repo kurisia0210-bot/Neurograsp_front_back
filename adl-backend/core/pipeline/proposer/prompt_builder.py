@@ -4,6 +4,7 @@ import json
 import re
 from typing import Dict, List, Optional
 
+from core.runtime.task_facts import normalize_task_facts
 from schema.payload import ObservationPayload
 
 
@@ -131,6 +132,16 @@ class LLMProposerPromptBuilder:
 
         return f"last_action=({action_text}); last_result=({result_text})"
 
+    @staticmethod
+    def _build_task_facts_input(obs: ObservationPayload) -> str:
+        facts = normalize_task_facts(obs)
+        return "task_facts=" + json.dumps(
+            facts,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+
     def build_messages(self, obs: ObservationPayload) -> List[Dict[str, str]]:
         """Assemble final `[system, user]` message list for LLM completion."""
         nearby_parts: List[str] = []
@@ -146,12 +157,14 @@ class LLMProposerPromptBuilder:
 
         goal_input = self._build_goal_input(obs)
         last_step_input = self._build_last_step_input(obs)
+        task_facts_input = self._build_task_facts_input(obs)
 
         user_prompt = (
             f"{goal_input}\n"
             f"agent.location={location}\n"
             f"agent.holding={holding}\n"
             f"nearby_objects={nearby_text}\n"
+            f"{task_facts_input}\n"
             f"{last_step_input}\n"
             "Return the next atomic action."
         )

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Protocol, Tuple
 
 from core.goal.goal_dsl import GoalDslEvaluator, GoalDslParser, GoalEvalReport, GoalExpr
+from core.runtime.task_facts import get_agent_holding, get_agent_location, get_object_state_relation
 from schema.payload import ObservationPayload
 
 
@@ -49,21 +50,13 @@ class GoalHandler(Protocol):
 
 class _GoalHandlerBase:
     def _location(self, obs: ObservationPayload) -> Optional[str]:
-        loc = getattr(obs.agent, "location", None)
-        return loc.value if hasattr(loc, "value") else loc
+        return get_agent_location(obs)
 
     def _holding(self, obs: ObservationPayload) -> Optional[str]:
-        h = getattr(obs.agent, "holding", None)
-        return h.value if hasattr(h, "value") else h
+        return get_agent_holding(obs)
 
     def _object_state_relation(self, obs: ObservationPayload, item_id: str) -> Tuple[str, str]:
-        for obj in obs.nearby_objects:
-            oid = obj.id.value if hasattr(obj.id, "value") else obj.id
-            if oid == item_id:
-                state = obj.state.value if hasattr(obj.state, "value") else obj.state
-                relation = (obj.relation or "").strip().lower()
-                return str(state), relation
-        return "MISSING", ""
+        return get_object_state_relation(obs, item_id)
 
 
 class MoveToGoalHandler(_GoalHandlerBase):

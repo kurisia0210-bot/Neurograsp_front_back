@@ -2,6 +2,7 @@ from pydantic import ValidationError
 
 from core.safety.error_dictionary import classify_step_error
 from core.runtime.memory import episodic_memory
+from core.runtime.task_facts import summarize_task_facts
 from core.reasoning import analyze_and_propose
 from core.runtime.step_logger import emit_step_summary
 from schema.payload import (
@@ -37,6 +38,12 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
         "[Tick Goal] "
         f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
         f"goal_type={goal_type!r} goal_id={goal_id!r} global_task={obs.global_task!r}"
+    )
+    facts = summarize_task_facts(obs, max_objects=4)
+    print(
+        "[Tick Facts] "
+        f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
+        f"agent={facts.get('agent')} objects={facts.get('objects')}"
     )
 
     # 1) Commit previous staged action with current observation as post-state
