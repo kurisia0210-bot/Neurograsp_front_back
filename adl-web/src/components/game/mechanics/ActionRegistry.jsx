@@ -29,6 +29,7 @@ class BaseActionHandler {
 
 class MoveHandler extends BaseActionHandler {
   run(intent, context = {}) {
+    const _ = context
     const poi = intent?.target_poi
     if (!poi) {
       return {
@@ -37,27 +38,22 @@ class MoveHandler extends BaseActionHandler {
         message: 'MOVE_TO missing target_poi'
       }
     }
-    if (typeof context.onMove === 'function') {
-      context.onMove(poi, intent)
-    }
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `MOVE_TO triggered: ${poi}`
+      message: `MOVE_TO validated: ${poi}`
     }
   }
 }
 
 class HoldHandler extends BaseActionHandler {
   run(intent, context = {}) {
+    const _ = context
     const target = intent?.target_item || 'target_item'
-    if (typeof context.onHold === 'function') {
-      context.onHold(target, intent)
-    }
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `HOLD triggered: ${target}`
+      message: `PICK validated: ${target}`
     }
   }
 }
@@ -85,14 +81,10 @@ class PlaceHandler extends BaseActionHandler {
       }
     }
 
-    if (typeof context.onPlace === 'function') {
-      context.onPlace(holdingItem, targetContainer, intent)
-    }
-
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `PLACE triggered: ${holdingItem} -> ${targetContainer}`
+      message: `PLACE validated: ${holdingItem} -> ${targetContainer}`
     }
   }
 }
@@ -100,13 +92,20 @@ class PlaceHandler extends BaseActionHandler {
 class OpenHandler extends BaseActionHandler {
   run(intent, context = {}) {
     const target = intent?.target_item || 'target_item'
-    if (typeof context.onOpen === 'function') {
-      context.onOpen(target, intent)
+    if (target === 'fridge_door') {
+      const fridgeOpen = readFlag(context.isFridgeOpen ?? context.fridgeOpen, false)
+      if (fridgeOpen) {
+        return {
+          handled: false,
+          status: 'BLOCKED_PRECONDITION',
+          message: 'OPEN blocked: fridge door is already open'
+        }
+      }
     }
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `OPEN triggered: ${target}`
+      message: `OPEN validated: ${target}`
     }
   }
 }
@@ -126,14 +125,10 @@ class CloseHandler extends BaseActionHandler {
       }
     }
 
-    if (typeof context.onClose === 'function') {
-      context.onClose(target, intent)
-    }
-
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `CLOSE triggered: ${target}`
+      message: `CLOSE validated: ${target}`
     }
   }
 }
@@ -203,10 +198,17 @@ class InteractFallbackHandler extends BaseActionHandler {
     const _ = context
     const interactionType = String(intent?.interaction_type || 'NONE').toUpperCase()
     const target = intent?.target_item || intent?.target_poi || 'target'
+    if (interactionType !== 'NONE') {
+      return {
+        handled: false,
+        status: 'NO_HANDLER',
+        message: `No handler for INTERACT(${interactionType}) -> ${target}`
+      }
+    }
     return {
       handled: true,
       status: 'SUCCESS',
-      message: `INTERACT(${interactionType}) -> ${target}`
+      message: `INTERACT validated: ${target}`
     }
   }
 }
@@ -270,6 +272,10 @@ export function executeRegisteredAction(intent, context = {}) {
   }
 
   return handler.run(intent, context)
+}
+
+export function isActionAllowed(result) {
+  return !!(result && result.handled && result.status === 'SUCCESS')
 }
 
 export function ActionTriggerBubble({ bubble }) {

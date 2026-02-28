@@ -3,6 +3,11 @@
 // 导入目标解析器
 import { resolveGoalSpec as defaultResolveGoalSpec } from '../mechanics/GoalParser'
 
+const DEFAULT_AGENT_STATE = {
+  location: 'table_center',
+  holding: null
+}
+
 /**
  * AgentSystem - reusable core loop
  */
@@ -11,15 +16,11 @@ export function useAgentSystem({
   onTickComplete = () => {},
   getWorldState,
   executeWorldAction,
+  validateAction,
   resolveGoalSpec: resolveGoalSpecOverride,
   initialTask = 'Put red cube in fridge',
   backendUrl = 'http://127.0.0.1:8001/api/tick'
 }) {
-  const [agentState, setAgentState] = useState({
-    location: 'table_center',
-    holding: null
-  })
-
   // P0-1 session/step tracking
   const sessionIdRef = useRef(crypto.randomUUID())
   const episodeIdRef = useRef(null)
@@ -34,21 +35,78 @@ export function useAgentSystem({
   const [lastResponse, setLastResponse] = useState(null)
   const [userInstruction, setUserInstruction] = useState(initialTask)
 
-  const agentStateRef = useRef(agentState)
-
-  useEffect(() => {
-    agentStateRef.current = agentState
-  }, [agentState])
-
-  const commitAgentStateMirror = useCallback((nextState) => {
-    const prev = agentStateRef.current
-    if (prev.location === nextState.location && prev.holding === nextState.holding) {
-      return prev
+  const normalizeAgentState = useCallback((rawState) => {
+    const safe = rawState || {}
+    return {
+      location: safe.location || DEFAULT_AGENT_STATE.location,
+      holding: Object.prototype.hasOwnProperty.call(safe, 'holding')
+        ? safe.holding
+        : DEFAULT_AGENT_STATE.holding
     }
-    agentStateRef.current = nextState
-    setAgentState(nextState)
-    return nextState
   }, [])
+
+  const readWorldSnapshot = useCallback((fallbackAgentState = null) => {
+    const fallbackAgent = normalizeAgentState(fallbackAgentState || lastObservation?.agent || DEFAULT_AGENT_STATE)
+    if (typeof getWorldState !== 'function') {
+      return {
+        worldState: {
+          agent: fallbackAgent,
+          nearby_objects: []
+        },
+        agent: fallbackAgent
+      }
+    }
+
+    try {
+      const worldState = getWorldState(fallbackAgent) || {}
+      const worldAgent = normalizeAgentState(worldState?.agent || fallbackAgent)
+      return {
+        worldState,
+        agent: worldAgent
+      }
+    } catch (error) {
+      console.error('[AgentSystem] getWorldState failed:', error)
+      return {
+        worldState: {
+          agent: fallbackAgent,
+          nearby_objects: []
+        },
+        agent: fallbackAgent
+      }
+    }
+  }, [getWorldState, lastObservation, normalizeAgentState])
+
+  const runRegistryValidation = useCallback((actionPayload) => {
+    if (typeof validateAction !== 'function') {
+      return {
+        handled: true,
+        status: 'SUCCESS',
+        message: 'Registry validation skipped'
+      }
+    }
+    try {
+      const result = validateAction(actionPayload, {
+        agentState: readWorldSnapshot().agent,
+        lastObservation,
+        lastAction,
+        lastResult
+      })
+      if (result && typeof result === 'object') {
+        return result
+      }
+      return {
+        handled: false,
+        status: 'INVALID_REGISTRY_RESULT',
+        message: 'Registry returned invalid validation result'
+      }
+    } catch (e) {
+      return {
+        handled: false,
+        status: 'REGISTRY_RUNTIME_ERROR',
+        message: e?.message || 'Registry validation crashed'
+      }
+    }
+  }, [validateAction, readWorldSnapshot, lastObservation, lastAction, lastResult])
 
   const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
     const nearby = worldState?.nearby_objects || []
@@ -88,27 +146,13 @@ export function useAgentSystem({
   }, [])
 
   const perceiveWorld = useCallback((customState = null) => {
-    const state = customState || agentStateRef.current
-
     // P0-1 increment step per request
     stepCounterRef.current += 1
 
-    const worldState = getWorldState
-      ? getWorldState(state)
-      : {
-          nearby_objects: [],
-          timestamp: Date.now() / 1000
-        }
-    const worldAgent = worldState?.agent || {}
-    const effectiveLocation = worldAgent.location || state.location
-    const effectiveHolding = Object.prototype.hasOwnProperty.call(worldAgent, 'holding')
-      ? worldAgent.holding
-      : state.holding
-    const effectiveAgentState = {
-      location: effectiveLocation || 'table_center',
-      holding: effectiveHolding ?? null
-    }
-    commitAgentStateMirror(effectiveAgentState)
+    const fallbackAgentState = normalizeAgentState(customState || DEFAULT_AGENT_STATE)
+    const { worldState, agent: effectiveAgentState } = readWorldSnapshot(fallbackAgentState)
+    const effectiveLocation = effectiveAgentState.location
+    const effectiveHolding = effectiveAgentState.holding
 
     // 使用传入的resolveGoalSpec函数，如果没有则使用默认的
     const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
@@ -136,66 +180,51 @@ export function useAgentSystem({
       last_action: lastAction,
       last_result: lastResult
     }
-  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts, commitAgentStateMirror])
+  }, [normalizeAgentState, readWorldSnapshot, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts])
 
-  const executeAction = useCallback((actionPayload) => {
+  const executeAction = useCallback((actionPayload, options = {}) => {
     console.log('[AgentSystem] Executing:', actionPayload)
+    const skipRegistry = !!options.skipRegistry
+    const registryResult = skipRegistry
+      ? { handled: true, status: 'SUCCESS', message: 'Registry validation skipped by option' }
+      : runRegistryValidation(actionPayload)
+    const isAllowedByRegistry = !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
 
-    const newAgentState = { ...agentStateRef.current }
+    if (!isAllowedByRegistry) {
+      const blockedResult = {
+        success: false,
+        failure_type: 'REFLEX_BLOCK',
+        failure_reason: registryResult?.message || 'Blocked by registry'
+      }
+      const blockedAgentState = readWorldSnapshot().agent
+      onActionExecuted(actionPayload, blockedAgentState, blockedResult, registryResult)
+      return {
+        agentState: blockedAgentState,
+        executionResult: blockedResult,
+        registryResult
+      }
+    }
+
     let worldExecutionResult = { success: true }
     const shouldExecuteWorldAction = executeWorldAction && (
       actionPayload?.type === 'INTERACT' || actionPayload?.type === 'MOVE_TO'
     )
 
     if (shouldExecuteWorldAction) {
-      worldExecutionResult = executeWorldAction(actionPayload, newAgentState) || { success: true }
+      worldExecutionResult = executeWorldAction(actionPayload) || { success: true }
     }
 
-    switch (actionPayload.type) {
-      case 'MOVE_TO':
-        if (actionPayload.target_poi && worldExecutionResult.success) {
-          newAgentState.location = actionPayload.target_poi
-        }
-        break
+    const observedAgentState = worldExecutionResult?.next_agent_state
+      ? normalizeAgentState(worldExecutionResult.next_agent_state)
+      : readWorldSnapshot().agent
+    onActionExecuted(actionPayload, observedAgentState, worldExecutionResult, registryResult)
 
-      case 'INTERACT': {
-        const interactionType = actionPayload.interaction_type || 'NONE'
-        const targetItem = actionPayload.target_item
-
-        if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
-          newAgentState.holding = targetItem
-        } else if (interactionType === 'PLACE' && worldExecutionResult.success) {
-          newAgentState.holding = null
-        }
-        break
-      }
-
-      case 'THINK':
-      case 'SPEAK':
-      case 'IDLE':
-      case 'FINISH':
-        break
-
-      default:
-        console.warn('Unknown action type:', actionPayload.type)
+    return {
+      agentState: observedAgentState,
+      executionResult: worldExecutionResult,
+      registryResult
     }
-
-    if (getWorldState) {
-      const worldStateAfterAction = getWorldState(newAgentState)
-      const worldAgent = worldStateAfterAction?.agent || {}
-      if (worldAgent.location) {
-        newAgentState.location = worldAgent.location
-      }
-      if (Object.prototype.hasOwnProperty.call(worldAgent, 'holding')) {
-        newAgentState.holding = worldAgent.holding
-      }
-    }
-
-    const committedState = commitAgentStateMirror(newAgentState)
-    onActionExecuted(actionPayload, committedState, worldExecutionResult)
-
-    return committedState
-  }, [executeWorldAction, getWorldState, onActionExecuted, commitAgentStateMirror])
+  }, [executeWorldAction, onActionExecuted, runRegistryValidation, normalizeAgentState, readWorldSnapshot])
 
   const recordManualExecution = useCallback((actionPayload, executionResult = null) => {
     if (!actionPayload || typeof actionPayload !== 'object') return
@@ -255,7 +284,10 @@ export function useAgentSystem({
       )
 
       if (!isBlocked) {
-        executeAction(data.intent)
+        const executionSummary = executeAction(data.intent)
+        if (executionSummary?.executionResult) {
+          setLastResult(executionSummary.executionResult)
+        }
       }
 
       onTickComplete(data, obs)
@@ -305,13 +337,6 @@ export function useAgentSystem({
   }
 
   const resetAgent = () => {
-    const resetState = {
-      location: 'table_center',
-      holding: null
-    }
-
-    agentStateRef.current = resetState
-    setAgentState(resetState)
     setLastAction(null)
     setLastResult(null)
     setLastError(null)
@@ -324,8 +349,10 @@ export function useAgentSystem({
     stepCounterRef.current = 0
   }
 
+  const currentAgentState = readWorldSnapshot().agent
+
   return {
-    agentState,
+    agentState: currentAgentState,
     isThinking,
     autoLoop,
     lastAction,

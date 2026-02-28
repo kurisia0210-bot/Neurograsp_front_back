@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
@@ -22,7 +22,6 @@ const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [0.55, 0.45] // smaller snap zone [halfX, halfZ]
-const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
 
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
@@ -103,43 +102,82 @@ export function AgentPlayground({ onBack }) {
     message: ''
   })
   const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
+  const [dragPreviewByCube, setDragPreviewByCube] = useState({})
+  const getWorldFacts = worldStateManager.getWorldFacts
 
   const triggerArrowAnimation = () => {
     setShowArrowAnimation(true)
     setTimeout(() => setShowArrowAnimation(false), 1500)
   }
 
+  const validateIntentWithRegistry = useCallback((intent) => {
+    const worldFacts = getWorldFacts()
+    const fridgeDoor = worldFacts?.nearby_objects?.find((obj) => obj.id === 'fridge_door')
+    return executeRegisteredAction(intent, {
+      holdingItem: worldFacts?.agent?.holding || null,
+      fridgeOpen: fridgeDoor?.state === 'open'
+    })
+  }, [getWorldFacts])
+
   const agentSystem = useAgentSystem({
     initialTask: 'Put red cube in fridge',
-    onTickComplete: (response, observation) => {
+    validateAction: validateIntentWithRegistry,
+    onTickComplete: (response) => {
       if (!response?.intent) return
 
       setIntentHistory((prev) => [...prev, toHistoryEntry(response)].slice(-30))
 
       const intent = response.intent
       setBehaviorLine(getBehaviorText(intent))
-
-      const preFridgeDoor = observation?.nearby_objects?.find((obj) => obj.id === 'fridge_door')
-      const triggerResult = executeRegisteredAction(intent, {
-        holdingItem: observation?.agent?.holding || null,
-        fridgeOpen: preFridgeDoor?.state === 'open'
-      })
-      setActionBubble({
-        visible: true,
-        status: triggerResult.status,
-        message: triggerResult.message
-      })
+      if (response?.reflex_verdict?.verdict === 'BLOCK') {
+        setActionBubble({
+          visible: true,
+          status: 'REFLEX_BLOCK',
+          message: response?.reflex_verdict?.message || 'Blocked by backend reflex'
+        })
+      }
     },
-    onActionExecuted: (action, newState) => {
-      console.log('[AgentPlayground] Action executed:', action?.type, newState)
-      if (action?.type === 'MOVE_TO' || action?.type === 'INTERACT') {
+    onActionExecuted: (action, newState, executionResult, registryResult) => {
+      console.log('[AgentPlayground] Action executed:', action?.type, newState, executionResult, registryResult)
+
+      setBehaviorLine(getBehaviorText(action))
+
+      const registryAllowed = !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
+      const didExecute = executionResult?.success !== false
+      if ((action?.type === 'MOVE_TO' || action?.type === 'INTERACT') && registryAllowed && didExecute) {
         triggerArrowAnimation()
       }
+
+      let bubbleStatus = 'SUCCESS'
+      let bubbleMessage = registryResult?.message || 'Action applied'
+      if (!registryAllowed) {
+        bubbleStatus = registryResult?.status || 'BLOCKED_BY_REGISTRY'
+        bubbleMessage = registryResult?.message || 'Action blocked by registry'
+      } else if (executionResult?.success === false) {
+        bubbleStatus = 'EXECUTION_FAILED'
+        bubbleMessage = executionResult?.failure_reason || 'Action execution failed'
+      }
+      setActionBubble({
+        visible: true,
+        status: bubbleStatus,
+        message: bubbleMessage
+      })
     },
     getWorldState: worldStateManager.getWorldState,
     executeWorldAction: worldStateManager.executeWorldAction
   })
   const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
+
+  const runManualIntent = useCallback((intent) => {
+    const summary = agentSystem.executeAction(intent)
+    const executionResult = summary?.executionResult || {
+      success: false,
+      failure_type: 'REASONING_ERROR',
+      failure_reason: 'Intent pipeline did not return execution result'
+    }
+    agentSystem.recordManualExecution(intent, executionResult)
+    return summary
+  }, [agentSystem.executeAction, agentSystem.recordManualExecution])
 
   useEffect(() => {
     if (!actionBubble.visible) return
@@ -183,6 +221,7 @@ export function AgentPlayground({ onBack }) {
     autoSnapLockRef.current = false
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
+    setDragPreviewByCube({})
     setIntentHistory([])
     setBehaviorLine('Action: waiting for next step')
     setAgentVisualPosition(getVisualTargetPosition('table_center'))
@@ -196,22 +235,7 @@ export function AgentPlayground({ onBack }) {
       content: `Manual move to ${targetPoi}`
     }
 
-    const triggerResult = executeRegisteredAction(intent, {
-      onMove: () => {
-        agentSystem.executeAction(intent)
-        agentSystem.recordManualExecution(intent, {
-          success: true,
-          failure_type: null,
-          failure_reason: ''
-        })
-      }
-    })
-
-    setActionBubble({
-      visible: true,
-      status: triggerResult.status,
-      message: triggerResult.message
-    })
+    runManualIntent(intent)
     setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
   }
 
@@ -304,21 +328,13 @@ export function AgentPlayground({ onBack }) {
             position={[0.5, 1, 0.51]}
             rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
             onClick={() => {
-              const wasOpen = worldStateManager.fridgeOpen
-              worldStateManager.toggleFridgeDoor()
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: 'fridge_door',
-                  interaction_type: wasOpen ? 'CLOSE' : 'OPEN',
-                  content: `Manual ${wasOpen ? 'close' : 'open'} fridge_door`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
+              const interactionType = worldStateManager.fridgeOpen ? 'CLOSE' : 'OPEN'
+              runManualIntent({
+                type: 'INTERACT',
+                target_item: 'fridge_door',
+                interaction_type: interactionType,
+                content: `Manual ${String(interactionType).toLowerCase()} fridge_door`
+              })
             }}
           >
             <mesh position={[-0.5, 0, 0]}>
@@ -335,16 +351,14 @@ export function AgentPlayground({ onBack }) {
         {worldStateManager.cubes.map((cube) => (
           <WholeCube
             key={cube.id}
-            position={cube.position}
+            position={dragPreviewByCube[cube.id] || cube.position}
             dragHeight={cube.dragHeight}
             isHeldByAgent={cube.state === 'in_hand'}
             allowClickThroughWhileDragging={false}
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
-              worldStateManager.setCubes((prev) =>
-                prev.map((c) => (c.id === cube.id ? { ...c, position: nextPosition } : c))
-              )
+              setDragPreviewByCube((prev) => ({ ...prev, [cube.id]: nextPosition }))
 
               if (autoSnapLockRef.current) return
               if (cube.state !== 'in_hand') return
@@ -352,43 +366,32 @@ export function AgentPlayground({ onBack }) {
               if (!isInFridgeMainDropZone(nextPosition)) return
 
               autoSnapLockRef.current = true
-              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: 'fridge_main',
-                  interaction_type: 'PLACE',
-                  content: `Manual place ${cube.id} into fridge_main (auto snap)`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
-              setActionBubble({
-                visible: true,
-                status: 'SUCCESS',
-                message: `Auto snap: ${cube.id} -> fridge_main`
+              setDragPreviewByCube((prev) => {
+                const next = { ...prev }
+                delete next[cube.id]
+                return next
+              })
+              runManualIntent({
+                type: 'INTERACT',
+                target_item: 'fridge_main',
+                interaction_type: 'PLACE',
+                content: `Manual place ${cube.id} into fridge_main (auto snap)`
               })
               setBehaviorLine(`Action: place ${cube.id} -> fridge_main (auto snap)`)
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
-              worldStateManager.pickUpCube(cube.id)
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: cube.id,
-                  interaction_type: 'PICK',
-                  content: `Manual pick ${cube.id}`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
+              setDragPreviewByCube((prev) => {
+                const next = { ...prev }
+                delete next[cube.id]
+                return next
+              })
+              runManualIntent({
+                type: 'INTERACT',
+                target_item: cube.id,
+                interaction_type: 'PICK',
+                content: `Manual pick ${cube.id}`
+              })
             }}
             onPlace={() => {
               if (autoSnapLockRef.current) {
@@ -396,39 +399,29 @@ export function AgentPlayground({ onBack }) {
                 return
               }
 
-              const currentPos = cube.position
+              const currentPos = dragPreviewByCube[cube.id] || cube.position
               const inFridgeZone = isInFridgeMainDropZone(currentPos)
+              setDragPreviewByCube((prev) => {
+                const next = { ...prev }
+                delete next[cube.id]
+                return next
+              })
 
               if (inFridgeZone) {
-                worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-                agentSystem.recordManualExecution(
-                  {
-                    type: 'INTERACT',
-                    target_item: 'fridge_main',
-                    interaction_type: 'PLACE',
-                    content: `Manual place ${cube.id} into fridge_main`
-                  },
-                  {
-                    success: true,
-                    failure_type: null,
-                    failure_reason: ''
-                  }
-                )
+                runManualIntent({
+                  type: 'INTERACT',
+                  target_item: 'fridge_main',
+                  interaction_type: 'PLACE',
+                  content: `Manual place ${cube.id} into fridge_main`
+                })
               } else {
-                worldStateManager.placeCube(cube.id, currentPos, 'on_table')
-                agentSystem.recordManualExecution(
-                  {
-                    type: 'INTERACT',
-                    target_item: 'table_surface',
-                    interaction_type: 'PLACE',
-                    content: `Manual place ${cube.id} on table_surface`
-                  },
-                  {
-                    success: true,
-                    failure_type: null,
-                    failure_reason: ''
-                  }
-                )
+                runManualIntent({
+                  type: 'INTERACT',
+                  target_item: 'table_surface',
+                  interaction_type: 'PLACE',
+                  target_position: currentPos,
+                  content: `Manual place ${cube.id} on table_surface`
+                })
               }
             }}
             slicingZonePos={[-3, 0, -0.5]}
