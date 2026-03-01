@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
@@ -215,5 +215,3 @@ class ComplexActionPlanner:
 
 
 __all__ = ["AtomicActionSpec", "ComplexActionPlanner"]
-
-

@@ -2,11 +2,7 @@
 
 // 导入目标解析器
 import { resolveGoalSpec as defaultResolveGoalSpec } from '../mechanics/GoalParser'
-
-const DEFAULT_AGENT_STATE = {
-  location: 'table_center',
-  holding: null
-}
+import { normalizeBackendIntent } from '../mechanics/ActionContract'
 
 /**
  * AgentSystem - reusable core loop
@@ -16,11 +12,15 @@ export function useAgentSystem({
   onTickComplete = () => {},
   getWorldState,
   executeWorldAction,
-  validateAction,
   resolveGoalSpec: resolveGoalSpecOverride,
   initialTask = 'Put red cube in fridge',
   backendUrl = 'http://127.0.0.1:8001/api/tick'
 }) {
+  const [agentState, setAgentState] = useState({
+    location: 'table_center',
+    holding: null
+  })
+
   // P0-1 session/step tracking
   const sessionIdRef = useRef(crypto.randomUUID())
   const episodeIdRef = useRef(null)
@@ -30,147 +30,43 @@ export function useAgentSystem({
   const [autoLoop, setAutoLoop] = useState(false)
   const [lastAction, setLastAction] = useState(null)
   const [lastResult, setLastResult] = useState(null)
+  const [lastEffects, setLastEffects] = useState([])
   const [lastError, setLastError] = useState(null)
   const [lastObservation, setLastObservation] = useState(null)
   const [lastResponse, setLastResponse] = useState(null)
   const [userInstruction, setUserInstruction] = useState(initialTask)
 
-  const normalizeAgentState = useCallback((rawState) => {
-    const safe = rawState || {}
-    return {
-      location: safe.location || DEFAULT_AGENT_STATE.location,
-      holding: Object.prototype.hasOwnProperty.call(safe, 'holding')
-        ? safe.holding
-        : DEFAULT_AGENT_STATE.holding
-    }
-  }, [])
+  const agentStateRef = useRef(agentState)
 
-  const readWorldSnapshot = useCallback((fallbackAgentState = null) => {
-    const fallbackAgent = normalizeAgentState(fallbackAgentState || lastObservation?.agent || DEFAULT_AGENT_STATE)
-    if (typeof getWorldState !== 'function') {
-      return {
-        worldState: {
-          agent: fallbackAgent,
-          nearby_objects: []
-        },
-        agent: fallbackAgent
-      }
-    }
-
-    try {
-      const worldState = getWorldState(fallbackAgent) || {}
-      const worldAgent = normalizeAgentState(worldState?.agent || fallbackAgent)
-      return {
-        worldState,
-        agent: worldAgent
-      }
-    } catch (error) {
-      console.error('[AgentSystem] getWorldState failed:', error)
-      return {
-        worldState: {
-          agent: fallbackAgent,
-          nearby_objects: []
-        },
-        agent: fallbackAgent
-      }
-    }
-  }, [getWorldState, lastObservation, normalizeAgentState])
-
-  const runRegistryValidation = useCallback((actionPayload) => {
-    if (typeof validateAction !== 'function') {
-      return {
-        verdict: 'ALLOW',
-        reason: 'Registry validation skipped',
-        effects: [],
-        handled: true,
-        status: 'SUCCESS',
-        message: 'Registry validation skipped'
-      }
-    }
-    try {
-      const snapshot = readWorldSnapshot()
-      const result = validateAction(actionPayload, {
-        ...snapshot.worldState,
-        last_action: lastAction,
-        last_result: lastResult
-      })
-      if (result && typeof result === 'object') {
-        return result
-      }
-      return {
-        verdict: 'BLOCK',
-        reason: 'Registry returned invalid validation result',
-        effects: [],
-        handled: false,
-        status: 'INVALID_REGISTRY_RESULT',
-        message: 'Registry returned invalid validation result'
-      }
-    } catch (e) {
-      return {
-        verdict: 'BLOCK',
-        reason: e?.message || 'Registry validation crashed',
-        effects: [],
-        handled: false,
-        status: 'REGISTRY_RUNTIME_ERROR',
-        message: e?.message || 'Registry validation crashed'
-      }
-    }
-  }, [validateAction, readWorldSnapshot, lastAction, lastResult])
-
-  const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
-    const nearby = worldState?.nearby_objects || []
-    const objects = {}
-    const inside = {}
-    const on = {}
-
-    nearby.forEach((obj) => {
-      if (!obj?.id) return
-      const relationText = String(obj.relation || '')
-      objects[obj.id] = {
-        state: obj.state || null,
-        relation: relationText || null
-      }
-
-      const insideMatch = relationText.match(/inside\s+([a-zA-Z0-9_]+)/i)
-      if (insideMatch?.[1]) {
-        inside[obj.id] = insideMatch[1]
-      }
-      const onMatch = relationText.match(/on\s+([a-zA-Z0-9_]+)/i)
-      if (onMatch?.[1]) {
-        on[obj.id] = onMatch[1]
-      }
-    })
-
-    return {
-      agent: {
-        location: effectiveLocation || null,
-        holding: effectiveHolding || null
-      },
-      objects,
-      relations: {
-        inside,
-        on
-      }
-    }
-  }, [])
+  useEffect(() => {
+    agentStateRef.current = agentState
+  }, [agentState])
 
   const perceiveWorld = useCallback((customState = null) => {
+    const state = customState || agentStateRef.current
+
     // P0-1 increment step per request
     stepCounterRef.current += 1
 
-    const fallbackAgentState = normalizeAgentState(customState || DEFAULT_AGENT_STATE)
-    const { worldState, agent: effectiveAgentState } = readWorldSnapshot(fallbackAgentState)
-    const effectiveLocation = effectiveAgentState.location
-    const effectiveHolding = effectiveAgentState.holding
+    const worldState = getWorldState
+      ? getWorldState(state)
+      : {
+          nearby_objects: [],
+          timestamp: Date.now() / 1000
+        }
+    const worldAgent = worldState?.agent || {}
+    const effectiveLocation = worldAgent.location || state.location
+    const effectiveHolding = Object.prototype.hasOwnProperty.call(worldAgent, 'holding')
+      ? worldAgent.holding
+      : state.holding
 
     // 使用传入的resolveGoalSpec函数，如果没有则使用默认的
     const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
     const parsedGoalSpec = typeof goalResolver === 'function'
-      ? goalResolver(userInstruction, effectiveAgentState, worldState)
+      ? goalResolver(userInstruction, state, worldState)
       : null
 
     const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
-    const taskFacts = worldState?.task_facts || buildTaskFacts(worldState, effectiveLocation, effectiveHolding)
 
     return {
       session_id: sessionIdRef.current,
@@ -178,92 +74,97 @@ export function useAgentSystem({
       step_id: stepCounterRef.current,
       timestamp: Date.now() / 1000,
       agent: {
-        location: effectiveAgentState.location,
-        holding: effectiveAgentState.holding
+        location: effectiveLocation,
+        holding: effectiveHolding
       },
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
       goal_spec: goalSpec,
-      task_facts: taskFacts,
       // P0-2 feed previous action/result back to backend
       last_action: lastAction,
-      last_result: lastResult
+      last_result: lastResult,
+      // Replay/observability: previous-step effects
+      last_effects: lastEffects
     }
-  }, [normalizeAgentState, readWorldSnapshot, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts])
+  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
-  const executeAction = useCallback((actionPayload, options = {}) => {
-    console.log('[AgentSystem] Executing:', actionPayload)
-    const skipRegistry = !!options.skipRegistry
-    const registryResult = skipRegistry
-      ? {
-          verdict: 'ALLOW',
-          reason: 'Registry validation skipped by option',
-          effects: [],
-          handled: true,
-          status: 'SUCCESS',
-          message: 'Registry validation skipped by option'
+  const executeAction = useCallback((actionPayload) => {
+    const normalizedAction = normalizeBackendIntent(actionPayload)
+    console.log('[AgentSystem] Executing:', normalizedAction)
+
+    const prevAgentState = agentStateRef.current
+    const newAgentState = { ...prevAgentState }
+    const effects = []
+
+    switch (normalizedAction.type) {
+      case 'MOVE_TO':
+        if (normalizedAction.target_poi) {
+          newAgentState.location = normalizedAction.target_poi
         }
-      : runRegistryValidation(actionPayload)
-    const isAllowedByRegistry = registryResult?.verdict
-      ? registryResult.verdict === 'ALLOW'
-      : !!(registryResult?.handled && registryResult?.status === 'SUCCESS')
+        break
 
-    if (!isAllowedByRegistry) {
-      const blockedResult = {
-        success: false,
-        failure_type: 'REFLEX_BLOCK',
-        failure_reason: registryResult?.reason || registryResult?.message || 'Blocked by registry'
+      case 'INTERACT': {
+        const interactionType = normalizedAction.interaction_type || 'NONE'
+        const targetItem = normalizedAction.target_item
+        let worldExecutionResult = { success: true }
+
+        if (executeWorldAction) {
+          worldExecutionResult = executeWorldAction(normalizedAction, newAgentState) || { success: true }
+        }
+
+        if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
+          newAgentState.holding = targetItem
+        } else if (interactionType === 'PLACE' && worldExecutionResult.success) {
+          newAgentState.holding = null
+        }
+
+        effects.push({
+          key: `interact.${String(interactionType).toLowerCase()}`,
+          before: targetItem || normalizedAction.target_poi || '',
+          after: worldExecutionResult.success ? 'success' : 'failed',
+          ok: Boolean(worldExecutionResult.success),
+          detail: worldExecutionResult.failure_reason || ''
+        })
+        break
       }
-      const blockedAgentState = readWorldSnapshot().agent
-      onActionExecuted(actionPayload, blockedAgentState, blockedResult, registryResult)
-      return {
-        agentState: blockedAgentState,
-        executionResult: blockedResult,
-        registryResult
-      }
+
+      case 'THINK':
+      case 'SPEAK':
+      case 'IDLE':
+      case 'FINISH':
+        break
+
+      default:
+        console.warn('Unknown action type:', normalizedAction.type)
     }
 
-    let worldExecutionResult = { success: true }
-    const shouldExecuteWorldAction = executeWorldAction && (
-      actionPayload?.type === 'INTERACT' || actionPayload?.type === 'MOVE_TO'
-    )
-
-    if (shouldExecuteWorldAction) {
-      worldExecutionResult = executeWorldAction(actionPayload) || { success: true }
+    if (prevAgentState.location !== newAgentState.location) {
+      effects.push({
+        key: 'agent.location',
+        before: prevAgentState.location || '',
+        after: newAgentState.location || '',
+        ok: true,
+        detail: ''
+      })
     }
 
-    const observedAgentState = worldExecutionResult?.next_agent_state
-      ? normalizeAgentState(worldExecutionResult.next_agent_state)
-      : readWorldSnapshot().agent
-    onActionExecuted(actionPayload, observedAgentState, worldExecutionResult, registryResult)
-
-    return {
-      agentState: observedAgentState,
-      executionResult: worldExecutionResult,
-      registryResult
-    }
-  }, [executeWorldAction, onActionExecuted, runRegistryValidation, normalizeAgentState, readWorldSnapshot])
-
-  const recordManualExecution = useCallback((actionPayload, executionResult = null) => {
-    if (!actionPayload || typeof actionPayload !== 'object') return
-
-    const normalizedAction = {
-      session_id: sessionIdRef.current,
-      episode_id: episodeIdRef.current,
-      step_id: stepCounterRef.current,
-      interaction_type: 'NONE',
-      ...actionPayload
+    if ((prevAgentState.holding || null) !== (newAgentState.holding || null)) {
+      effects.push({
+        key: 'agent.holding',
+        before: prevAgentState.holding || null,
+        after: newAgentState.holding || null,
+        ok: true,
+        detail: ''
+      })
     }
 
-    const normalizedResult = executionResult || {
-      success: true,
-      failure_type: null,
-      failure_reason: ''
-    }
+    agentStateRef.current = newAgentState
+    setAgentState(newAgentState)
+    setLastEffects(effects)
+    onActionExecuted(normalizedAction, newAgentState)
 
-    setLastAction(normalizedAction)
-    setLastResult(normalizedResult)
-  }, [])
+    return newAgentState
+  }, [executeWorldAction, onActionExecuted])
 
   const tick = useCallback(async () => {
     if (isThinking) return
@@ -289,26 +190,40 @@ export function useAgentSystem({
       } else if (typeof data.intent?.episode_id === 'number') {
         episodeIdRef.current = data.intent.episode_id
       }
-      setLastAction(data.intent)
+      const normalizedIntent = normalizeBackendIntent(data.intent)
+      setLastAction(normalizedIntent)
 
       const reflex = data.reflex_verdict
       const isBlocked = reflex && reflex.verdict === 'BLOCK'
-      setLastResult(
+      const effectiveResult =
         data.execution_result || {
           success: !isBlocked,
           failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
           failure_reason: reflex?.message || ''
         }
-      )
+      setLastResult(effectiveResult)
 
       if (!isBlocked) {
-        const executionSummary = executeAction(data.intent)
-        if (executionSummary?.executionResult) {
-          setLastResult(executionSummary.executionResult)
-        }
+        executeAction(normalizedIntent)
+      } else {
+        setLastEffects([
+          {
+            key: 'reflex.block',
+            before: 'pending',
+            after: 'blocked',
+            ok: false,
+            detail: effectiveResult.failure_reason || ''
+          }
+        ])
       }
 
-      onTickComplete(data, obs)
+      onTickComplete(
+        {
+          ...data,
+          intent: normalizedIntent
+        },
+        obs
+      )
     } catch (e) {
       console.error('Tick error:', e)
       setLastAction({
@@ -323,6 +238,15 @@ export function useAgentSystem({
         failure_type: 'REASONING_ERROR',
         failure_reason: e.message
       })
+      setLastEffects([
+        {
+          key: 'tick.error',
+          before: 'request',
+          after: 'failed',
+          ok: false,
+          detail: e.message
+        }
+      ])
       setLastError({
         error_code: 'E_REASONING_RUNTIME',
         module: 'frontend_bridge',
@@ -355,8 +279,16 @@ export function useAgentSystem({
   }
 
   const resetAgent = () => {
+    const resetState = {
+      location: 'table_center',
+      holding: null
+    }
+
+    agentStateRef.current = resetState
+    setAgentState(resetState)
     setLastAction(null)
     setLastResult(null)
+    setLastEffects([])
     setLastError(null)
     setLastObservation(null)
     setLastResponse(null)
@@ -367,14 +299,13 @@ export function useAgentSystem({
     stepCounterRef.current = 0
   }
 
-  const currentAgentState = readWorldSnapshot().agent
-
   return {
-    agentState: currentAgentState,
+    agentState,
     isThinking,
     autoLoop,
     lastAction,
     lastResult,
+    lastEffects,
     lastError,
     lastObservation,
     lastResponse,
@@ -393,8 +324,7 @@ export function useAgentSystem({
     setUserInstruction,
 
     perceiveWorld,
-    executeAction,
-    recordManualExecution
+    executeAction
   }
 }
 
@@ -418,3 +348,4 @@ export function useAgentSystemContext() {
   }
   return context
 }
+

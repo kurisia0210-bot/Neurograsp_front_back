@@ -5,7 +5,6 @@ import os
 import time
 from typing import Any, Dict
 
-from core.runtime.task_facts import summarize_task_facts
 
 def _enum_to_value(value: Any) -> Any:
     return value.value if hasattr(value, "value") else value
@@ -56,6 +55,24 @@ def _safe_reflex(reflex: Any) -> Dict[str, Any]:
     }
 
 
+def _safe_effects(effects: Any) -> list[Dict[str, Any]]:
+    if not effects:
+        return []
+
+    normalized: list[Dict[str, Any]] = []
+    for effect in effects:
+        normalized.append(
+            {
+                "key": getattr(effect, "key", None),
+                "before": getattr(effect, "before", None),
+                "after": getattr(effect, "after", None),
+                "ok": getattr(effect, "ok", None),
+                "detail": getattr(effect, "detail", ""),
+            }
+        )
+    return normalized
+
+
 def emit_step_summary(
     *,
     obs: Any,
@@ -80,9 +97,9 @@ def emit_step_summary(
         "input": {
             "last_action": _safe_action(getattr(obs, "last_action", None)),
             "last_result": _safe_result(getattr(obs, "last_result", None)),
+            "last_effects": _safe_effects(getattr(obs, "last_effects", [])),
             "agent_location": _enum_to_value(getattr(getattr(obs, "agent", None), "location", None)),
             "agent_holding": _enum_to_value(getattr(getattr(obs, "agent", None), "holding", None)),
-            "task_facts": summarize_task_facts(obs),
         },
         "output": {
             "intent": _safe_action(intent),
@@ -115,3 +132,17 @@ def emit_step_summary(
 
     if _env_bool("STEP_SUMMARY_PRETTY", False):
         print("[StepSummaryPretty]\n" + json.dumps(summary, ensure_ascii=False, indent=2))
+
+    if _env_bool("STEP_TRACE_JSON", True):
+        trace = {
+            "event": "step_trace",
+            "ts": summary["ts"],
+            "session_id": summary["session_id"],
+            "episode_id": summary["episode_id"],
+            "step_id": summary["step_id"],
+            "intent": summary["output"]["intent"],
+            "verdict": summary["output"]["reflex_verdict"],
+            "effects": summary["input"]["last_effects"],
+            "result": summary["output"]["execution_result"],
+        }
+        print("[StepTrace] " + json.dumps(trace, ensure_ascii=False, separators=(",", ":")))

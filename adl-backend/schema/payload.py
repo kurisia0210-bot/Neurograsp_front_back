@@ -94,6 +94,14 @@ class ActionExecutionResult(BaseModel):
     failure_reason: str = ""
 
 
+class WorldEffect(BaseModel):
+    key: str = Field(..., description="Effect key, e.g. agent.location / interact.pick")
+    before: Optional[str] = Field(default=None, description="Before value")
+    after: Optional[str] = Field(default=None, description="After value")
+    ok: Optional[bool] = Field(default=None, description="Whether this effect succeeded")
+    detail: str = Field(default="", description="Optional effect detail")
+
+
 class GoalSpecPayload(BaseModel):
     """
     Optional structured goal hint sent by frontend.
@@ -123,10 +131,6 @@ class ObservationPayload(BaseModel):
         default=None,
         description="Optional structured goal hint to avoid per-tick NL parsing"
     )
-    task_facts: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional task-relevant structured world facts for deterministic grounding"
-    )
 
     # P0-2: previous-step closure data
     last_action: Optional["ActionPayload"] = Field(
@@ -136,6 +140,10 @@ class ObservationPayload(BaseModel):
     last_result: Optional[ActionExecutionResult] = Field(
         default=None,
         description="Last action execution result"
+    )
+    last_effects: List[WorldEffect] = Field(
+        default_factory=list,
+        description="Last action world effects for observability/replay"
     )
 
 
@@ -223,6 +231,10 @@ class AgentStepResponse(BaseModel):
     intent: ActionPayload
     execution_result: ActionExecutionResult
     reflex_verdict: ReflexVerdictModel
+    effects: List[WorldEffect] = Field(
+        default_factory=list,
+        description="Observed world effects from previous step closure data"
+    )
     error: StepErrorPayload
 
 
