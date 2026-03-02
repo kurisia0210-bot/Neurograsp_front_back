@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { buildWorldFacts, isPositionTriplet } from './worldFacts'
 
 const DOOR_OPEN_ANGLE = 2.0
 const DOOR_CLOSED_ANGLE = 0
@@ -21,10 +22,6 @@ function normalizeAgentState(rawAgentState, cubes = []) {
     location: safeRaw.location || DEFAULT_AGENT_STATE.location,
     holding: hasHolding ? safeRaw.holding : inferHoldingFromCubes(cubes)
   }
-}
-
-function isPositionTriplet(value) {
-  return Array.isArray(value) && value.length === 3 && value.every((n) => Number.isFinite(n))
 }
 
 export function useWorldStateManager(options = {}) {
@@ -280,57 +277,19 @@ export function useWorldStateManager(options = {}) {
     }
   }, [agentState, openFridgeDoor, closeFridgeDoor, toggleFridgeDoor, cubes, fridgeOpen])
 
-  const getWorldState = useCallback(() => {
-    const nearby_objects = []
-    const holdingCube = getHoldingCube()
-    const inferredHolding = holdingCube?.id || null
-    const resolvedAgentState = normalizeAgentState(agentState, cubes)
-    const effectiveHolding = inferredHolding || resolvedAgentState.holding || null
-
-    cubes.forEach((cube) => {
-      const relation =
-        cube.state === 'in_hand'
-          ? 'held by agent'
-          : cube.state === 'in_fridge'
-            ? 'inside fridge_main'
-            : 'on table_surface'
-      nearby_objects.push({
-        id: cube.id,
-        state: cube.state,
-        relation
-      })
+  const getWorldFacts = useCallback((customAgentState = null) => {
+    const resolvedAgentState = normalizeAgentState(customAgentState || agentState, cubes)
+    return buildWorldFacts({
+      agentState: resolvedAgentState,
+      cubes,
+      fridgeOpen
     })
+  }, [agentState, cubes, fridgeOpen])
 
-    nearby_objects.push({
-      id: 'fridge_door',
-      state: fridgeOpen ? 'open' : 'closed',
-      relation: 'front of agent'
-    })
-
-    nearby_objects.push({
-      id: 'fridge_main',
-      state: 'installed',
-      relation: 'kitchen appliance'
-    })
-
-    nearby_objects.push({
-      id: 'table_surface',
-      state: 'installed',
-      relation: 'support surface'
-    })
-
-    return {
-      agent: {
-        location: resolvedAgentState.location,
-        holding: effectiveHolding
-      },
-      nearby_objects
-    }
-  }, [agentState, cubes, fridgeOpen, getHoldingCube])
-
-  const getWorldFacts = useCallback(() => {
-    return getWorldState()
-  }, [getWorldState])
+  // Backward-compatible alias: existing callers still use getWorldState.
+  const getWorldState = useCallback((customAgentState = null) => {
+    return getWorldFacts(customAgentState)
+  }, [getWorldFacts])
 
   const resetWorldState = useCallback(() => {
     stopDoorAnimation()

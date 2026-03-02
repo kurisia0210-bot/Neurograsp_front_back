@@ -143,6 +143,7 @@ export function AgentPlayground({ onBack }) {
         triggerArrowAnimation()
       }
     },
+    getWorldFacts: worldStateManager.getWorldFacts,
     getWorldState: worldStateManager.getWorldState,
     executeWorldAction: worldStateManager.executeWorldAction
   })

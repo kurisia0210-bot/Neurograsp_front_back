@@ -10,6 +10,7 @@ import { normalizeBackendIntent } from './ActionContract'
 export function useAgentSystem({
   onActionExecuted = () => {},
   onTickComplete = () => {},
+  getWorldFacts,
   getWorldState,
   executeWorldAction,
   resolveGoalSpec: resolveGoalSpecOverride,
@@ -48,8 +49,10 @@ export function useAgentSystem({
     // P0-1 increment step per request
     stepCounterRef.current += 1
 
-    const worldState = getWorldState
-      ? getWorldState(state)
+    const worldState = getWorldFacts
+      ? getWorldFacts(state)
+      : getWorldState
+        ? getWorldState(state)
       : {
           nearby_objects: [],
           timestamp: Date.now() / 1000
@@ -86,7 +89,7 @@ export function useAgentSystem({
       // Replay/observability: previous-step effects
       last_effects: lastEffects
     }
-  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
+  }, [getWorldFacts, getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
   const executeAction = useCallback((actionPayload) => {
     const normalizedAction = normalizeBackendIntent(actionPayload)
