@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Cellphone } from '../Cellphone'
 import { TargetBoard } from '../game/mechanics/TargetBoard';
 import { DoctorAvatar } from '../game/avatar/DoctorAvatar';
-import { useAgentBridge } from '../game/hook/useAgentBridge';
+import { useAgentBridge } from '../game/core/useAgentBridge';
 
 // 🛠️ 定义 Payload 构造器 (放在组件外)
 const buildObservation = (level, targetNum, currentInput, failStreak, event) => {

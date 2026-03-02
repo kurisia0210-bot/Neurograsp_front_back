@@ -1,8 +1,8 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 // 导入目标解析器
-import { resolveGoalSpec as defaultResolveGoalSpec } from '../core/GoalParser'
-import { normalizeBackendIntent } from '../core/ActionContract'
+import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
+import { normalizeBackendIntent } from './ActionContract'
 
 /**
  * AgentSystem - reusable core loop

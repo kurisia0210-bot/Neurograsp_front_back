@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
@@ -9,7 +9,7 @@ import { Wall } from '../Wall'
 import { Table } from '../Table'
 
 import { NotificationBubble } from '../game/items/NotificationBubble'
-import { useAgentSystem } from '../game/agent/AgentSystem'
+import { useAgentSystem } from '../game/core/AgentSystem'
 
 const TABLE_HEIGHT = 0.85
 const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2

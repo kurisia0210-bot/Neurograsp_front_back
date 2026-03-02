@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
-import { useAgentSystem } from '../components/game/agent/AgentSystem'
+import { useAgentSystem } from '../components/game/core/AgentSystem'
 import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
 import { WholeCube } from '../components/game/mechanics/GameCube'
 import {
   ActionTriggerBubble,
   executeRegisteredAction
-} from '../components/game/mechanics/ActionRegistry'
-import { ActionType } from '../components/game/core/ActionContract'
+} from '../components/game/core/ActionRegistry'
+import { ActionType, InteractionType } from '../components/game/core/ActionContract'
 import {
   AgentBrainDashboard,
   AgentStatusDisplay
@@ -190,6 +190,22 @@ export function AgentPlayground({ onBack }) {
     resetActionBubble()
   }
 
+  const toggleDoorByManualAction = () => {
+    const nextInteraction = worldStateManager.fridgeOpen ? InteractionType.CLOSE : InteractionType.OPEN
+    const manualDoorIntent = {
+      type: ActionType.INTERACT,
+      interaction_type: nextInteraction,
+      target_item: 'fridge_door',
+      content: `Manual ${nextInteraction.toLowerCase()} fridge_door`
+    }
+
+    if (typeof agentSystem.commitManualAction === 'function') {
+      agentSystem.commitManualAction(manualDoorIntent)
+      return
+    }
+    worldStateManager.toggleFridgeDoor()
+  }
+
   const moveAgentTo = (targetPoi, label) => {
     const intent = {
       type: ActionType.MOVE_TO,
@@ -303,7 +319,7 @@ export function AgentPlayground({ onBack }) {
           <mesh
             position={[0.5, 1, 0.51]}
             rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
-            onClick={worldStateManager.toggleFridgeDoor}
+            onClick={toggleDoorByManualAction}
           >
             <mesh position={[-0.5, 0, 0]}>
               <boxGeometry args={[1, 2, 0.05]} />
@@ -348,7 +364,19 @@ export function AgentPlayground({ onBack }) {
               if (!isInFridgeMainDropZone(nextPosition)) return
 
               autoSnapLockRef.current = true
-              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              const manualSnapPlaceIntent = {
+                type: ActionType.INTERACT,
+                interaction_type: InteractionType.PLACE,
+                target_item: 'fridge_main',
+                target_location: 'fridge_main',
+                target_position: FRIDGE_MAIN_SNAP_POSITION,
+                content: `Manual place ${cube.id} on fridge_main (auto snap)`
+              }
+              if (typeof agentSystem.commitManualAction === 'function') {
+                agentSystem.commitManualAction(manualSnapPlaceIntent)
+              } else {
+                worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              }
               setActionBubble({
                 visible: true,
                 status: 'SUCCESS',
@@ -358,12 +386,36 @@ export function AgentPlayground({ onBack }) {
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
-              worldStateManager.pickUpCube(cube.id)
+              const manualPickIntent = {
+                type: ActionType.INTERACT,
+                interaction_type: InteractionType.PICK,
+                target_item: cube.id,
+                content: `Manual pick ${cube.id}`
+              }
+              if (typeof agentSystem.commitManualAction === 'function') {
+                agentSystem.commitManualAction(manualPickIntent)
+              } else {
+                worldStateManager.pickUpCube(cube.id)
+              }
             }}
             onPlace={() => {
               const currentPos = cube.position
               const inFridgeZone =
                 Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
+
+              const manualPlaceIntent = {
+                type: ActionType.INTERACT,
+                interaction_type: InteractionType.PLACE,
+                target_item: inFridgeZone ? 'fridge_main' : 'table_surface',
+                target_location: inFridgeZone ? 'fridge_main' : 'table_surface',
+                target_position: inFridgeZone ? [-1.8, 1.2, -0.5] : currentPos,
+                content: `Manual place ${cube.id} on ${inFridgeZone ? 'fridge_main' : 'table_surface'}`
+              }
+
+              if (typeof agentSystem.commitManualAction === 'function') {
+                agentSystem.commitManualAction(manualPlaceIntent)
+                return
+              }
 
               if (inFridgeZone) {
                 worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')

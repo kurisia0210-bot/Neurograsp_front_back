@@ -1,5 +1,5 @@
 import React from 'react'
-import { normalizeBackendIntent } from '../core/ActionContract'
+import { normalizeBackendIntent } from './ActionContract'
 
 function readFlag(valueOrGetter, fallback = false) {
   if (typeof valueOrGetter === 'function') return !!valueOrGetter()
