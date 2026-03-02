@@ -118,6 +118,28 @@ export function useWorldStateManager(options = {}) {
     return holdingCube?.id === cubeId
   }, [getHoldingCube])
 
+  const updateCubePosition = useCallback((cubeId, position, epsilon = 0) => {
+    if (!isPositionTriplet(position)) return false
+    let didUpdate = false
+    setCubes((prevCubes) =>
+      prevCubes.map((cube) => {
+        if (cube.id !== cubeId) return cube
+        const currentPos = cube.position
+        if (
+          isPositionTriplet(currentPos) &&
+          Math.abs(currentPos[0] - position[0]) <= epsilon &&
+          Math.abs(currentPos[1] - position[1]) <= epsilon &&
+          Math.abs(currentPos[2] - position[2]) <= epsilon
+        ) {
+          return cube
+        }
+        didUpdate = true
+        return { ...cube, position }
+      })
+    )
+    return didUpdate
+  }, [])
+
   const openFridgeDoor = useCallback((source = 'agent') => {
     setFridgeOpen((prev) => {
       if (prev) return prev
@@ -319,6 +341,7 @@ export function useWorldStateManager(options = {}) {
 
     pickUpCube,
     placeCube,
+    updateCubePosition,
     isHolding,
     openFridgeDoor,
     closeFridgeDoor,

@@ -1,3 +1,10 @@
+import {
+  ITEM_NAMES as SHARED_ITEM_NAMES,
+  POI_NAMES as SHARED_POI_NAMES,
+  ITEM_ALIAS as SHARED_ITEM_ALIAS,
+  POI_ALIAS as SHARED_POI_ALIAS
+} from './domainVocabulary'
+
 export const ActionType = Object.freeze({
   MOVE_TO: 'MOVE_TO',
   INTERACT: 'INTERACT',
@@ -32,21 +39,8 @@ export const CANONICAL_ACTION_FIELDS = Object.freeze({
   INTERACT: Object.freeze(['type', 'interaction_type', 'target_item'])
 })
 
-export const ITEM_NAMES = Object.freeze([
-  'red_cube',
-  'half_cube_left',
-  'half_cube_right',
-  'fridge_main',
-  'fridge_door',
-  'stove',
-  'table_surface'
-])
-
-export const POI_NAMES = Object.freeze([
-  'table_center',
-  'fridge_zone',
-  'stove_zone'
-])
+export const ITEM_NAMES = SHARED_ITEM_NAMES
+export const POI_NAMES = SHARED_POI_NAMES
 
 const ACTION_SET = new Set(ACTION_TYPES)
 const INTERACTION_SET = new Set(INTERACTION_TYPES)
@@ -64,32 +58,8 @@ const INTERACTION_ACTION_ALIAS = Object.freeze({
   COOK: 'COOK'
 })
 
-const ITEM_ALIAS = Object.freeze({
-  cube: 'red_cube',
-  red_cube: 'red_cube',
-  'red cube': 'red_cube',
-  fridge: 'fridge_main',
-  fridge_main: 'fridge_main',
-  'fridge main': 'fridge_main',
-  fridge_door: 'fridge_door',
-  'fridge door': 'fridge_door',
-  table: 'table_surface',
-  table_surface: 'table_surface',
-  'table surface': 'table_surface',
-  stove: 'stove'
-})
-
-const POI_ALIAS = Object.freeze({
-  table: 'table_center',
-  table_center: 'table_center',
-  'table center': 'table_center',
-  fridge: 'fridge_zone',
-  fridge_zone: 'fridge_zone',
-  'fridge zone': 'fridge_zone',
-  stove: 'stove_zone',
-  stove_zone: 'stove_zone',
-  'stove zone': 'stove_zone'
-})
+const ITEM_ALIAS = SHARED_ITEM_ALIAS
+const POI_ALIAS = SHARED_POI_ALIAS
 
 function normalizeText(raw) {
   return String(raw || '')
@@ -191,7 +161,7 @@ export function normalizeBackendIntent(intent) {
       type: 'INTERACT',
       interaction_type: interactionType,
       target_item: targetItem,
-      target_poi: normalizePoiName(intent.target_poi)
+      target_poi: null
     }
   }
 

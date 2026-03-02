@@ -370,25 +370,7 @@ export function AgentPlayground({ onBack }) {
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
-              worldStateManager.setCubes((prev) => {
-                const idx = prev.findIndex((c) => c.id === cube.id)
-                if (idx < 0) return prev
-
-                const currentPos = prev[idx]?.position
-                if (
-                  Array.isArray(currentPos) &&
-                  currentPos.length >= 3 &&
-                  Math.abs(currentPos[0] - nextPosition[0]) < DRAG_POSITION_EPSILON &&
-                  Math.abs(currentPos[1] - nextPosition[1]) < DRAG_POSITION_EPSILON &&
-                  Math.abs(currentPos[2] - nextPosition[2]) < DRAG_POSITION_EPSILON
-                ) {
-                  return prev
-                }
-
-                const next = [...prev]
-                next[idx] = { ...next[idx], position: nextPosition }
-                return next
-              })
+              worldStateManager.updateCubePosition(cube.id, nextPosition, DRAG_POSITION_EPSILON)
 
               if (autoSnapLockRef.current) return
               if (cube.state !== 'in_hand') return
