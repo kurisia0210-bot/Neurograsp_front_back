@@ -10,14 +10,14 @@ import {
   ActionTriggerBubble,
   executeRegisteredAction
 } from '../components/game/mechanics/ActionRegistry'
-import { ActionType } from '../components/game/mechanics/ActionContract'
+import { ActionType } from '../components/game/core/ActionContract'
 import {
   AgentBrainDashboard,
   AgentStatusDisplay
 } from '../components/game/mechanics/AgentBrainDashboard'
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
-import { useWorldStateManager } from '../components/game/mechanics/WorldStateManager'
+import { useWorldStateManager } from '../components/game/core/WorldStateManager'
 
 const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
