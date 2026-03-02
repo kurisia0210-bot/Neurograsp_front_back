@@ -6,10 +6,7 @@ import { useAgentSystem } from '../components/game/core/AgentSystem'
 import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
 import { WholeCube } from '../components/game/mechanics/GameCube'
-import {
-  ActionTriggerBubble,
-  executeRegisteredAction
-} from '../components/game/core/ActionRegistry'
+import { ActionTriggerBubble } from '../components/game/mechanics/ActionTriggerBubble'
 import { ActionType } from '../components/game/core/ActionContract'
 import {
   AgentBrainDashboard,
@@ -85,6 +82,40 @@ function getBehaviorText(intent) {
   return `Action: ${type.toLowerCase()}`
 }
 
+function getActionLabel(intent) {
+  if (!intent?.type) return 'action'
+  const type = String(intent.type).toUpperCase()
+  if (type === 'MOVE_TO') {
+    return `MOVE_TO ${intent.target_poi || 'target'}`
+  }
+  if (type === 'INTERACT') {
+    const interaction = String(intent.interaction_type || 'NONE').toUpperCase()
+    const target = intent.target_item || intent.target_poi || 'target'
+    return `${interaction} ${target}`
+  }
+  return type
+}
+
+function toBubbleFromExecution(intent, executionResult, fallbackError = null) {
+  const label = getActionLabel(intent)
+  if (executionResult && executionResult.success === false) {
+    return {
+      status: executionResult.failure_type || 'EXECUTION_FAILED',
+      message: executionResult.failure_reason || `${label} blocked`
+    }
+  }
+  if (fallbackError) {
+    return {
+      status: 'EXECUTION_FAILED',
+      message: String(fallbackError)
+    }
+  }
+  return {
+    status: 'SUCCESS',
+    message: `${label} executed`
+  }
+}
+
 export function AgentPlayground({ onBack }) {
   const autoSnapLockRef = useRef(false)
   const worldStateManager = useWorldStateManager({
@@ -118,7 +149,7 @@ export function AgentPlayground({ onBack }) {
 
   const agentSystem = useAgentSystem({
     initialTask: 'Put red cube in fridge',
-    onTickComplete: (response, observation) => {
+    onTickComplete: (response) => {
       if (!response?.intent) return
 
       setIntentHistory((prev) => [...prev, toHistoryEntry(response)].slice(-30))
@@ -126,11 +157,11 @@ export function AgentPlayground({ onBack }) {
       const intent = response.intent
       setBehaviorLine(getBehaviorText(intent))
 
-      const preFridgeDoor = observation?.nearby_objects?.find((obj) => obj.id === 'fridge_door')
-      const triggerResult = executeRegisteredAction(intent, {
-        holdingItem: observation?.agent?.holding || null,
-        fridgeOpen: preFridgeDoor?.state === 'open'
-      })
+      const triggerResult = toBubbleFromExecution(
+        intent,
+        response?.execution_result,
+        response?.error?.detail || response?.error?.description || null
+      )
       setActionBubble({
         visible: true,
         status: triggerResult.status,
@@ -158,7 +189,7 @@ export function AgentPlayground({ onBack }) {
   }, [actionBubble.visible])
 
   useEffect(() => {
-    const target = getVisualTargetPosition(agentSystem.agentState.location)
+    const target = getVisualTargetPosition(worldStateManager.agentState.location)
     const timer = setInterval(() => {
       setAgentVisualPosition((prev) => {
         const next = prev.map((v, idx) => v + (target[idx] - v) * 0.18)
@@ -177,7 +208,7 @@ export function AgentPlayground({ onBack }) {
     }, 16)
 
     return () => clearInterval(timer)
-  }, [agentSystem.agentState.location])
+  }, [worldStateManager.agentState.location])
 
   const resetActionBubble = () => {
     setActionBubble({
@@ -204,15 +235,8 @@ export function AgentPlayground({ onBack }) {
       content: `Manual move to ${targetPoi}`
     }
 
-    const triggerResult = executeRegisteredAction(intent, {
-      onMove: () => {
-        if (typeof agentSystem.commitManualAction === 'function') {
-          agentSystem.commitManualAction(intent)
-          return
-        }
-        agentSystem.executeAction(intent)
-      }
-    })
+    const committed = agentSystem.dispatchIntent(intent)
+    const triggerResult = toBubbleFromExecution(intent, committed?.executionResult)
 
     setActionBubble({
       visible: true,
@@ -224,7 +248,7 @@ export function AgentPlayground({ onBack }) {
 
   const getDoctorAvatarStatus = () => {
     if (agentSystem.isThinking) return 'thinking'
-    if (agentSystem.agentState.holding) return 'active'
+    if (worldStateManager.agentState.holding) return 'active'
     return 'idle'
   }
 
@@ -420,7 +444,7 @@ export function AgentPlayground({ onBack }) {
       </div>
 
       <AgentStatusDisplay
-        agentState={agentSystem.agentState}
+        agentState={worldStateManager.agentState}
         userInstruction={agentSystem.userInstruction}
         isThinking={agentSystem.isThinking}
         autoLoop={agentSystem.autoLoop}

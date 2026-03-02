@@ -91,7 +91,7 @@ export function Level1({ onBack }) {
   const lighting = usePlaygroundLightingSettings()
 
   const getWorldState = useCallback(
-    (agentState) => {
+    (agentState = { location: 'table_center', holding: null }) => {
       const nearby_objects = [
         {
           id: 'fridge_main',
@@ -145,7 +145,6 @@ export function Level1({ onBack }) {
     (actionPayload) => {
       const interactionType = String(actionPayload.interaction_type || 'NONE').toUpperCase()
       const targetItem = actionPayload.target_item
-      const targetLocation = actionPayload.target_location || actionPayload.target_poi || targetItem
 
       if (interactionType === 'PICK') {
         if (targetItem !== 'red_cube' || cubeState !== 'on_table') {
@@ -182,7 +181,7 @@ export function Level1({ onBack }) {
           return { success: false, failure_reason: 'PLACE precondition failed: no item in hand' }
         }
 
-        if (targetLocation === 'fridge_main') {
+        if (targetItem === 'fridge_main') {
           if (!fridgeDoorOpen) {
             return { success: false, failure_reason: 'PLACE precondition failed: fridge door closed' }
           }
@@ -190,7 +189,7 @@ export function Level1({ onBack }) {
           return { success: true }
         }
 
-        if (targetLocation === 'table_surface') {
+        if (targetItem === 'table_surface') {
           setCubeState('on_table')
           return { success: true }
         }
@@ -220,17 +219,14 @@ export function Level1({ onBack }) {
   }
 
   const runManualInteraction = useCallback(
-    (interactionType, targetItem, targetLocation = null) => {
+    (interactionType, targetItem) => {
       const payload = {
         type: 'INTERACT',
         interaction_type: interactionType,
         target_item: targetItem
       }
-      if (targetLocation) {
-        payload.target_location = targetLocation
-      }
 
-      const result = executeWorldAction(payload)
+      const result = agentSystem.dispatchIntent(payload)?.executionResult
       if (result?.success) {
         setActionLine(`Action: ${String(interactionType).toLowerCase()} ${targetItem}`)
       } else {
@@ -238,7 +234,7 @@ export function Level1({ onBack }) {
       }
       return result
     },
-    [executeWorldAction]
+    [agentSystem.dispatchIntent]
   )
 
   const handleReset = () => {
@@ -262,11 +258,11 @@ export function Level1({ onBack }) {
   }
 
   const manualPlaceTable = () => {
-    runManualInteraction('PLACE', 'table_surface', 'table_surface')
+    runManualInteraction('PLACE', 'table_surface')
   }
 
   const manualPlaceFridge = () => {
-    runManualInteraction('PLACE', 'fridge_main', 'fridge_main')
+    runManualInteraction('PLACE', 'fridge_main')
   }
 
   const cubePosition =
