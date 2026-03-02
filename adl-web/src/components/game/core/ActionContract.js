@@ -23,6 +23,15 @@ export const InteractionType = Object.freeze({
 export const ACTION_TYPES = Object.freeze(Object.values(ActionType))
 export const INTERACTION_TYPES = Object.freeze(Object.values(InteractionType))
 
+// Canonical payload model:
+// - MOVE_TO: type + target_poi
+// - INTERACT: type + interaction_type + target_item
+// Legacy fields like target_location are accepted as input aliases only.
+export const CANONICAL_ACTION_FIELDS = Object.freeze({
+  MOVE_TO: Object.freeze(['type', 'target_poi']),
+  INTERACT: Object.freeze(['type', 'interaction_type', 'target_item'])
+})
+
 export const ITEM_NAMES = Object.freeze([
   'red_cube',
   'half_cube_left',
@@ -95,9 +104,15 @@ function normalizeType(raw) {
     .toUpperCase()
 }
 
+function stripLegacyFields(intent) {
+  const { target_location: _legacyTargetLocation, ...rest } = intent || {}
+  return rest
+}
+
 function fallbackThink(intent, reason) {
+  const baseIntent = stripLegacyFields(intent)
   return {
-    ...intent,
+    ...baseIntent,
     type: 'THINK',
     target_poi: null,
     target_item: null,
@@ -130,6 +145,7 @@ export function normalizeBackendIntent(intent) {
   if (!intent || typeof intent !== 'object') {
     return fallbackThink({}, 'Invalid intent payload: empty or non-object.')
   }
+  const baseIntent = stripLegacyFields(intent)
 
   const rawType = normalizeType(intent.type)
   let actionType = rawType
@@ -150,9 +166,10 @@ export function normalizeBackendIntent(intent) {
       return fallbackThink(intent, 'MOVE_TO requires a valid target_poi.')
     }
     return {
-      ...intent,
+      ...baseIntent,
       type: 'MOVE_TO',
       target_poi: poi,
+      target_item: null,
       interaction_type: 'NONE'
     }
   }
@@ -170,7 +187,7 @@ export function normalizeBackendIntent(intent) {
     }
 
     return {
-      ...intent,
+      ...baseIntent,
       type: 'INTERACT',
       interaction_type: interactionType,
       target_item: targetItem,
@@ -179,7 +196,7 @@ export function normalizeBackendIntent(intent) {
   }
 
   return {
-    ...intent,
+    ...baseIntent,
     type: actionType,
     interaction_type: 'NONE'
   }

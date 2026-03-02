@@ -90,7 +90,7 @@ function getActionLabel(intent) {
   }
   if (type === 'INTERACT') {
     const interaction = String(intent.interaction_type || 'NONE').toUpperCase()
-    const target = intent.target_item || intent.target_poi || intent.target_location || 'target'
+    const target = intent.target_item || intent.target_poi || 'target'
     return `${interaction} ${target}`
   }
   return type

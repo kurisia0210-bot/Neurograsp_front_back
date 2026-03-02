@@ -49,6 +49,15 @@ export function resolveRegisteredAction(intent) {
   }
 
   const normalizedIntent = normalizeBackendIntent(intent)
+  if (normalizedIntent.type === 'THINK' && String(intent.type || '').toUpperCase() !== 'THINK') {
+    return {
+      handled: false,
+      status: 'INVALID_INTENT',
+      message: normalizedIntent.content || 'Invalid intent payload',
+      actionKey: null,
+      intent: normalizedIntent
+    }
+  }
   const actionKey = resolveActionKey(normalizedIntent)
   if (!actionKey) {
     return {
@@ -68,4 +77,3 @@ export function resolveRegisteredAction(intent) {
     intent: normalizedIntent
   }
 }
-

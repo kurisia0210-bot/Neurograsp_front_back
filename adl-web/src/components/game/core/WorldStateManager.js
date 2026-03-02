@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { buildWorldFacts, isPositionTriplet } from './worldFacts'
+import { normalizeBackendIntent } from './ActionContract'
 
 const DOOR_OPEN_ANGLE = 2.0
 const DOOR_CLOSED_ANGLE = 0
@@ -145,16 +146,26 @@ export function useWorldStateManager(options = {}) {
   }, [animateFridgeDoorTo])
 
   const executeWorldAction = useCallback((actionPayload) => {
-    console.log('[World] Executing:', actionPayload)
+    const normalizedAction = normalizeBackendIntent(actionPayload)
+    console.log('[World] Executing:', normalizedAction)
     const currentAgentState = normalizeAgentState(agentState, cubes)
     const withAgentState = (result, nextAgentState = currentAgentState) => ({
       ...result,
       next_agent_state: normalizeAgentState(nextAgentState, cubes)
     })
 
-    const actionType = String(actionPayload?.type || 'INTERACT').toUpperCase()
+    const rawType = String(actionPayload?.type || '').toUpperCase()
+    if (normalizedAction.type === 'THINK' && rawType !== 'THINK') {
+      return withAgentState({
+        success: false,
+        failure_type: 'INVALID_ACTION_PAYLOAD',
+        failure_reason: normalizedAction.content || 'Invalid action payload'
+      })
+    }
+
+    const actionType = String(normalizedAction?.type || 'INTERACT').toUpperCase()
     if (actionType === 'MOVE_TO') {
-      const targetPoi = actionPayload?.target_poi
+      const targetPoi = normalizedAction?.target_poi
       if (!targetPoi) {
         return withAgentState({ success: false, failure_reason: 'MOVE_TO missing target_poi' })
       }
@@ -171,9 +182,8 @@ export function useWorldStateManager(options = {}) {
       return withAgentState({ success: false, failure_reason: `Unsupported action type: ${actionType}` })
     }
 
-    const interactionType = String(actionPayload.interaction_type || 'NONE').toUpperCase()
-    const targetItem = actionPayload.target_item
-    const targetLocation = actionPayload.target_location || actionPayload.target_poi || targetItem
+    const interactionType = String(normalizedAction.interaction_type || 'NONE').toUpperCase()
+    const targetItem = normalizedAction.target_item
     const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
 
     switch (interactionType) {
@@ -200,7 +210,7 @@ export function useWorldStateManager(options = {}) {
         if (!holdingCube) {
           return withAgentState({ success: false, failure_reason: 'PLACE precondition failed: no item in hand' })
         }
-        if (targetLocation === 'fridge_main' && !fridgeOpen) {
+        if (targetItem === 'fridge_main' && !fridgeOpen) {
           return withAgentState({ success: false, failure_reason: 'PLACE precondition failed: fridge door is closed' })
         }
 
@@ -208,13 +218,13 @@ export function useWorldStateManager(options = {}) {
         setCubes((prevCubes) =>
           prevCubes.map((cube) => {
             if (cube.id === heldCubeId && cube.state === 'in_hand') {
-              if (targetLocation === 'fridge_main') {
+              if (targetItem === 'fridge_main') {
                 console.log(`Placed ${cube.name} in fridge`)
                 return { ...cube, state: 'in_fridge', position: [-1.8, 1.2, -0.5] }
               }
-              if (targetLocation === 'table_surface') {
+              if (targetItem === 'table_surface') {
                 console.log(`Placed ${cube.name} on table`)
-                const explicitTargetPosition = actionPayload?.target_position
+                const explicitTargetPosition = normalizedAction?.target_position
                 if (isPositionTriplet(explicitTargetPosition)) {
                   return { ...cube, state: 'on_table', position: explicitTargetPosition }
                 }
@@ -235,13 +245,13 @@ export function useWorldStateManager(options = {}) {
           })
         )
         const nextAgentState = { ...currentAgentState, holding: null }
-        if (targetLocation === 'fridge_main' || targetLocation === 'table_surface') {
+        if (targetItem === 'fridge_main' || targetItem === 'table_surface') {
           setAgentState(nextAgentState)
         }
-        if (targetLocation === 'fridge_main' || targetLocation === 'table_surface') {
+        if (targetItem === 'fridge_main' || targetItem === 'table_surface') {
           return withAgentState({ success: true }, nextAgentState)
         }
-        return withAgentState({ success: false, failure_reason: `PLACE unsupported target: ${targetLocation}` })
+        return withAgentState({ success: false, failure_reason: `PLACE unsupported target: ${targetItem}` })
       }
 
       case 'OPEN':
