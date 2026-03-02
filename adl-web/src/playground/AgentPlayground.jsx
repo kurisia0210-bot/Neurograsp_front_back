@@ -199,6 +199,10 @@ export function AgentPlayground({ onBack }) {
 
     const triggerResult = executeRegisteredAction(intent, {
       onMove: () => {
+        if (typeof agentSystem.commitManualAction === 'function') {
+          agentSystem.commitManualAction(intent)
+          return
+        }
         agentSystem.executeAction(intent)
       }
     })

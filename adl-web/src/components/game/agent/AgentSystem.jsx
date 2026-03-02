@@ -95,21 +95,44 @@ export function useAgentSystem({
     const prevAgentState = agentStateRef.current
     const newAgentState = { ...prevAgentState }
     const effects = []
+    let executionResult = {
+      success: true,
+      failure_type: null,
+      failure_reason: ''
+    }
 
     switch (normalizedAction.type) {
       case 'MOVE_TO':
         if (normalizedAction.target_poi) {
           newAgentState.location = normalizedAction.target_poi
+        } else {
+          executionResult = {
+            success: false,
+            failure_type: null,
+            failure_reason: 'MOVE_TO missing target_poi'
+          }
         }
         break
 
       case 'INTERACT': {
         const interactionType = normalizedAction.interaction_type || 'NONE'
         const targetItem = normalizedAction.target_item
-        let worldExecutionResult = { success: true }
+        let worldExecutionResult = { success: true, failure_reason: '' }
 
         if (executeWorldAction) {
-          worldExecutionResult = executeWorldAction(normalizedAction, newAgentState) || { success: true }
+          const worldExecutionResultRaw = executeWorldAction(normalizedAction, newAgentState) || {
+            success: true,
+            failure_reason: ''
+          }
+          worldExecutionResult = {
+            success: Boolean(worldExecutionResultRaw.success),
+            failure_reason: worldExecutionResultRaw.failure_reason || ''
+          }
+        }
+        executionResult = {
+          success: worldExecutionResult.success,
+          failure_type: null,
+          failure_reason: worldExecutionResult.failure_reason
         }
 
         if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
@@ -136,6 +159,11 @@ export function useAgentSystem({
 
       default:
         console.warn('Unknown action type:', normalizedAction.type)
+        executionResult = {
+          success: false,
+          failure_type: null,
+          failure_reason: `Unknown action type: ${normalizedAction.type}`
+        }
     }
 
     if (prevAgentState.location !== newAgentState.location) {
@@ -163,8 +191,29 @@ export function useAgentSystem({
     setLastEffects(effects)
     onActionExecuted(normalizedAction, newAgentState)
 
-    return newAgentState
+    return {
+      action: normalizedAction,
+      agentState: newAgentState,
+      executionResult
+    }
   }, [executeWorldAction, onActionExecuted])
+
+  const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
+    const applied = executeAction(actionPayload)
+    const committedAction = {
+      session_id: sessionIdRef.current,
+      episode_id: episodeIdRef.current,
+      step_id: stepCounterRef.current,
+      ...applied.action
+    }
+    const committedResult = resultOverride || applied.executionResult
+    setLastAction(committedAction)
+    setLastResult(committedResult)
+    return {
+      action: committedAction,
+      executionResult: committedResult
+    }
+  }, [executeAction])
 
   const tick = useCallback(async () => {
     if (isThinking) return
@@ -183,7 +232,6 @@ export function useAgentSystem({
       if (!response.ok) throw new Error(`Backend error: ${response.status}`)
 
       const data = await response.json()
-      setLastResponse(data)
       setLastError(data.error || null)
       if (typeof data.episode_id === 'number') {
         episodeIdRef.current = data.episode_id
@@ -195,35 +243,74 @@ export function useAgentSystem({
 
       const reflex = data.reflex_verdict
       const isBlocked = reflex && reflex.verdict === 'BLOCK'
-      const effectiveResult =
+      const adjudicationResult =
         data.execution_result || {
           success: !isBlocked,
           failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
           failure_reason: reflex?.message || ''
         }
-      setLastResult(effectiveResult)
+      const canExecute = !isBlocked && Boolean(adjudicationResult.success)
 
-      if (!isBlocked) {
-        executeAction(normalizedIntent)
-      } else {
+      if (canExecute) {
+        const applied = executeAction(normalizedIntent)
+        setLastResult(applied.executionResult)
+        const responseWithExecution = {
+          ...data,
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: applied.executionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
+      } else if (isBlocked) {
+        const blockedExecutionResult = {
+          success: false,
+          failure_type: 'REFLEX_BLOCK',
+          failure_reason: adjudicationResult.failure_reason || reflex?.message || ''
+        }
+        setLastResult(blockedExecutionResult)
         setLastEffects([
           {
             key: 'reflex.block',
             before: 'pending',
             after: 'blocked',
             ok: false,
-            detail: effectiveResult.failure_reason || ''
+            detail: blockedExecutionResult.failure_reason || ''
           }
         ])
-      }
-
-      onTickComplete(
-        {
+        const responseWithExecution = {
           ...data,
-          intent: normalizedIntent
-        },
-        obs
-      )
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: blockedExecutionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
+      } else {
+        const adjudicationFailedExecutionResult = {
+          success: false,
+          failure_type: adjudicationResult.failure_type || 'REASONING_ERROR',
+          failure_reason: adjudicationResult.failure_reason || 'Adjudication failed before execution.'
+        }
+        setLastResult(adjudicationFailedExecutionResult)
+        setLastEffects([
+          {
+            key: 'adjudication.fail',
+            before: 'allowed',
+            after: 'not_executed',
+            ok: false,
+            detail: adjudicationFailedExecutionResult.failure_reason
+          }
+        ])
+        const responseWithExecution = {
+          ...data,
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: adjudicationFailedExecutionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
+      }
     } catch (e) {
       console.error('Tick error:', e)
       setLastAction({
@@ -324,7 +411,8 @@ export function useAgentSystem({
     setUserInstruction,
 
     perceiveWorld,
-    executeAction
+    executeAction,
+    commitManualAction
   }
 }
 
