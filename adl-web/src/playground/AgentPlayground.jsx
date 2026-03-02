@@ -10,7 +10,7 @@ import {
   ActionTriggerBubble,
   executeRegisteredAction
 } from '../components/game/core/ActionRegistry'
-import { ActionType, InteractionType } from '../components/game/core/ActionContract'
+import { ActionType } from '../components/game/core/ActionContract'
 import {
   AgentBrainDashboard,
   AgentStatusDisplay
@@ -24,6 +24,7 @@ const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+const DRAG_POSITION_EPSILON = 0.001
 
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
@@ -38,6 +39,11 @@ function getVisualTargetPosition(location) {
   if (location === 'fridge_zone') return [-2, 0, 1]
   if (location === 'stove_zone') return [2, 0, 1]
   return DEFAULT_AGENT_POSITION
+}
+
+function getHeldCubeAnchor(agentPosition) {
+  if (!Array.isArray(agentPosition) || agentPosition.length < 3) return [0, 1.2, 0]
+  return [agentPosition[0] + 0.34, 1.26, agentPosition[2] + 0.02]
 }
 
 function toHistoryEntry(response) {
@@ -190,22 +196,6 @@ export function AgentPlayground({ onBack }) {
     resetActionBubble()
   }
 
-  const toggleDoorByManualAction = () => {
-    const nextInteraction = worldStateManager.fridgeOpen ? InteractionType.CLOSE : InteractionType.OPEN
-    const manualDoorIntent = {
-      type: ActionType.INTERACT,
-      interaction_type: nextInteraction,
-      target_item: 'fridge_door',
-      content: `Manual ${nextInteraction.toLowerCase()} fridge_door`
-    }
-
-    if (typeof agentSystem.commitManualAction === 'function') {
-      agentSystem.commitManualAction(manualDoorIntent)
-      return
-    }
-    worldStateManager.toggleFridgeDoor()
-  }
-
   const moveAgentTo = (targetPoi, label) => {
     const intent = {
       type: ActionType.MOVE_TO,
@@ -319,7 +309,7 @@ export function AgentPlayground({ onBack }) {
           <mesh
             position={[0.5, 1, 0.51]}
             rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
-            onClick={toggleDoorByManualAction}
+            onClick={worldStateManager.toggleFridgeDoor}
           >
             <mesh position={[-0.5, 0, 0]}>
               <boxGeometry args={[1, 2, 0.05]} />
@@ -348,15 +338,32 @@ export function AgentPlayground({ onBack }) {
           <WholeCube
             key={cube.id}
             position={cube.position}
+            heldAnchor={getHeldCubeAnchor(agentVisualPosition)}
             dragHeight={cube.dragHeight}
             isHeldByAgent={cube.state === 'in_hand'}
-            allowClickThroughWhileDragging={true}
+            allowClickThroughWhileDragging={false}
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
-              worldStateManager.setCubes((prev) =>
-                prev.map((c) => (c.id === cube.id ? { ...c, position: nextPosition } : c))
-              )
+              worldStateManager.setCubes((prev) => {
+                const idx = prev.findIndex((c) => c.id === cube.id)
+                if (idx < 0) return prev
+
+                const currentPos = prev[idx]?.position
+                if (
+                  Array.isArray(currentPos) &&
+                  currentPos.length >= 3 &&
+                  Math.abs(currentPos[0] - nextPosition[0]) < DRAG_POSITION_EPSILON &&
+                  Math.abs(currentPos[1] - nextPosition[1]) < DRAG_POSITION_EPSILON &&
+                  Math.abs(currentPos[2] - nextPosition[2]) < DRAG_POSITION_EPSILON
+                ) {
+                  return prev
+                }
+
+                const next = [...prev]
+                next[idx] = { ...next[idx], position: nextPosition }
+                return next
+              })
 
               if (autoSnapLockRef.current) return
               if (cube.state !== 'in_hand') return
@@ -364,19 +371,7 @@ export function AgentPlayground({ onBack }) {
               if (!isInFridgeMainDropZone(nextPosition)) return
 
               autoSnapLockRef.current = true
-              const manualSnapPlaceIntent = {
-                type: ActionType.INTERACT,
-                interaction_type: InteractionType.PLACE,
-                target_item: 'fridge_main',
-                target_location: 'fridge_main',
-                target_position: FRIDGE_MAIN_SNAP_POSITION,
-                content: `Manual place ${cube.id} on fridge_main (auto snap)`
-              }
-              if (typeof agentSystem.commitManualAction === 'function') {
-                agentSystem.commitManualAction(manualSnapPlaceIntent)
-              } else {
-                worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-              }
+              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
               setActionBubble({
                 visible: true,
                 status: 'SUCCESS',
@@ -386,36 +381,12 @@ export function AgentPlayground({ onBack }) {
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
-              const manualPickIntent = {
-                type: ActionType.INTERACT,
-                interaction_type: InteractionType.PICK,
-                target_item: cube.id,
-                content: `Manual pick ${cube.id}`
-              }
-              if (typeof agentSystem.commitManualAction === 'function') {
-                agentSystem.commitManualAction(manualPickIntent)
-              } else {
-                worldStateManager.pickUpCube(cube.id)
-              }
+              worldStateManager.pickUpCube(cube.id)
             }}
             onPlace={() => {
               const currentPos = cube.position
               const inFridgeZone =
                 Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
-
-              const manualPlaceIntent = {
-                type: ActionType.INTERACT,
-                interaction_type: InteractionType.PLACE,
-                target_item: inFridgeZone ? 'fridge_main' : 'table_surface',
-                target_location: inFridgeZone ? 'fridge_main' : 'table_surface',
-                target_position: inFridgeZone ? [-1.8, 1.2, -0.5] : currentPos,
-                content: `Manual place ${cube.id} on ${inFridgeZone ? 'fridge_main' : 'table_surface'}`
-              }
-
-              if (typeof agentSystem.commitManualAction === 'function') {
-                agentSystem.commitManualAction(manualPlaceIntent)
-                return
-              }
 
               if (inFridgeZone) {
                 worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')

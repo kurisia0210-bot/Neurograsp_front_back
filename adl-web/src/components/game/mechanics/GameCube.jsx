@@ -9,6 +9,7 @@ const NO_RAYCAST = () => null
 
 export function WholeCube({
   position,
+  heldAnchor = null,
   onDrag,
   slicingZonePos,
   slicingZoneSize,
@@ -26,11 +27,14 @@ export function WholeCube({
     return new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragHeight)
   }, [dragHeight])
 
+  const staticPosition =
+    isHeldByAgent && Array.isArray(heldAnchor) && heldAnchor.length === 3 ? heldAnchor : position
+
   useEffect(() => {
-    if (meshRef.current && !isDragging && position && Array.isArray(position)) {
-      meshRef.current.position.set(...position)
+    if (meshRef.current && !isDragging && staticPosition && Array.isArray(staticPosition)) {
+      meshRef.current.position.set(...staticPosition)
     }
-  }, [position, isDragging])
+  }, [staticPosition, isDragging])
 
   useEffect(() => {
     if (pendingPickupRef.current && isHeldByAgent) {
@@ -45,11 +49,24 @@ export function WholeCube({
   useFrame((state) => {
     if (!isDragging || !meshRef.current) return
 
+    // 获取鼠标在3D空间中的位置
     state.raycaster.setFromCamera(state.pointer, state.camera)
     const targetPoint = new THREE.Vector3()
-    state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
+    const intersects = state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
 
-    if (!targetPoint) return
+    if (!intersects) {
+      // 如果平面相交失败，尝试使用备用方法
+      // 计算从相机到鼠标方向的射线
+      const mouse = new THREE.Vector2()
+      mouse.x = (state.pointer.x * 0.5 + 0.5) * 2 - 1
+      mouse.y = -(state.pointer.y * 0.5 + 0.5) * 2 + 1
+      
+      const raycaster = new THREE.Raycaster()
+      raycaster.setFromCamera(mouse, state.camera)
+      const intersection = raycaster.ray.intersectPlane(floorPlane, targetPoint)
+      
+      if (!intersection) return
+    }
 
     meshRef.current.position.set(targetPoint.x, dragHeight, targetPoint.z)
 
@@ -87,7 +104,7 @@ export function WholeCube({
   return (
     <mesh
       ref={meshRef}
-      position={position}
+      position={staticPosition}
       onClick={handleClick}
       raycast={allowClickThroughWhileDragging && isDragging ? NO_RAYCAST : undefined}
       onPointerOver={() => (document.body.style.cursor = 'grab')}
@@ -111,11 +128,26 @@ export function HalfCube({ initialPos, targetPos, onPlaced, rotation, type, drag
   useFrame((state) => {
     if (isLocked || !isDragging || !meshRef.current) return
 
+    // 获取鼠标在3D空间中的位置
     state.raycaster.setFromCamera(state.pointer, state.camera)
     const targetPoint = new THREE.Vector3()
-    state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
+    const intersects = state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
 
-    if (!targetPoint) return
+    if (!intersects) {
+      // 如果平面相交失败，尝试使用备用方法
+      const mouse = new THREE.Vector2()
+      mouse.x = (state.pointer.x * 0.5 + 0.5) * 2 - 1
+      mouse.y = -(state.pointer.y * 0.5 + 0.5) * 2 + 1
+      
+      const raycaster = new THREE.Raycaster()
+      raycaster.setFromCamera(mouse, state.camera)
+      const intersection = raycaster.ray.intersectPlane(floorPlane, targetPoint)
+      
+      if (!intersection) {
+        console.warn('HalfCube: Could not intersect plane with mouse position')
+        return
+      }
+    }
 
     meshRef.current.position.set(targetPoint.x, dragHeight, targetPoint.z)
 
