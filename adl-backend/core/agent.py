@@ -2,7 +2,6 @@ from pydantic import ValidationError
 
 from core.safety.error_dictionary import classify_step_error
 from core.runtime.memory import episodic_memory
-from core.runtime.task_facts import summarize_task_facts
 from core.reasoning import analyze_and_propose
 from core.runtime.step_logger import emit_step_summary
 from schema.payload import (
@@ -28,23 +27,6 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
             f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
             f"last_action.content={obs.last_action.content!r}"
         )
-
-    goal_type = None
-    goal_id = None
-    if obs.goal_spec is not None:
-        goal_type = getattr(obs.goal_spec, "goal_type", None)
-        goal_id = getattr(obs.goal_spec, "goal_id", None)
-    print(
-        "[Tick Goal] "
-        f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
-        f"goal_type={goal_type!r} goal_id={goal_id!r} global_task={obs.global_task!r}"
-    )
-    facts = summarize_task_facts(obs, max_objects=4)
-    print(
-        "[Tick Facts] "
-        f"(session={obs.session_id}, episode={obs.episode_id}, step={obs.step_id}) "
-        f"agent={facts.get('agent')} objects={facts.get('objects')}"
-    )
 
     # 1) Commit previous staged action with current observation as post-state
     episodic_memory.commit(obs)
@@ -135,5 +117,6 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
         intent=intent,
         execution_result=exec_result,
         reflex_verdict=reflex_model,
+        effects=getattr(obs, "last_effects", []) or [],
         error=error_payload,
     )

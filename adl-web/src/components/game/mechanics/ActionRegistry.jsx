@@ -1,4 +1,5 @@
 import React from 'react'
+import { normalizeBackendIntent } from '../core/ActionContract'
 
 function readFlag(valueOrGetter, fallback = false) {
   if (typeof valueOrGetter === 'function') return !!valueOrGetter()
@@ -233,9 +234,10 @@ export const ACTION_REGISTRY = {
 export function resolveActionKey(intent) {
   if (!intent || !intent.type) return null
 
-  const actionType = String(intent.type).toUpperCase()
+  const normalizedIntent = normalizeBackendIntent(intent)
+  const actionType = String(normalizedIntent.type).toUpperCase()
   if (actionType === 'INTERACT') {
-    const interactionType = String(intent.interaction_type || 'INTERACT').toUpperCase()
+    const interactionType = String(normalizedIntent.interaction_type || 'INTERACT').toUpperCase()
     return ACTION_REGISTRY[interactionType] ? interactionType : 'INTERACT'
   }
   if (
@@ -259,7 +261,8 @@ export function executeRegisteredAction(intent, context = {}) {
     }
   }
 
-  const actionKey = resolveActionKey(intent)
+  const normalizedIntent = normalizeBackendIntent(intent)
+  const actionKey = resolveActionKey(normalizedIntent)
   const handler = ACTION_REGISTRY[actionKey]
   if (!handler) {
     return {
@@ -269,7 +272,15 @@ export function executeRegisteredAction(intent, context = {}) {
     }
   }
 
-  return handler.run(intent, context)
+  if (normalizedIntent.type === 'THINK' && String(intent.type || '').toUpperCase() !== 'THINK') {
+    return {
+      handled: false,
+      status: 'INVALID_INTENT',
+      message: normalizedIntent.content || 'Invalid intent payload'
+    }
+  }
+
+  return handler.run(normalizedIntent, context)
 }
 
 export function ActionTriggerBubble({ bubble }) {

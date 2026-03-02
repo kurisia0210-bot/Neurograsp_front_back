@@ -5,7 +5,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Protocol, Tuple
 
 from core.goal.goal_dsl import GoalDslEvaluator, GoalDslParser, GoalEvalReport, GoalExpr
-from core.runtime.task_facts import get_agent_holding, get_agent_location, get_object_state_relation
+from core.goal.alias_registry import (
+    BACKEND_CONTAINER_ALIASES,
+    BACKEND_ITEM_ALIASES,
+    BACKEND_POI_ALIASES,
+)
 from schema.payload import ObservationPayload
 
 
@@ -50,13 +54,21 @@ class GoalHandler(Protocol):
 
 class _GoalHandlerBase:
     def _location(self, obs: ObservationPayload) -> Optional[str]:
-        return get_agent_location(obs)
+        loc = getattr(obs.agent, "location", None)
+        return loc.value if hasattr(loc, "value") else loc
 
     def _holding(self, obs: ObservationPayload) -> Optional[str]:
-        return get_agent_holding(obs)
+        h = getattr(obs.agent, "holding", None)
+        return h.value if hasattr(h, "value") else h
 
     def _object_state_relation(self, obs: ObservationPayload, item_id: str) -> Tuple[str, str]:
-        return get_object_state_relation(obs, item_id)
+        for obj in obs.nearby_objects:
+            oid = obj.id.value if hasattr(obj.id, "value") else obj.id
+            if oid == item_id:
+                state = obj.state.value if hasattr(obj.state, "value") else obj.state
+                relation = (obj.relation or "").strip().lower()
+                return str(state), relation
+        return "MISSING", ""
 
 
 class MoveToGoalHandler(_GoalHandlerBase):
@@ -377,38 +389,9 @@ class GoalRegistry:
     _ITEMS = {"red_cube", "half_cube_left", "half_cube_right", "fridge_door", "fridge_main", "table_surface", "stove"}
     _CONTAINERS = {"fridge_main", "table_surface", "stove"}
 
-    _POI_ALIASES = {
-        "table": "table_center",
-        "center": "table_center",
-        "table_center": "table_center",
-        "fridge": "fridge_zone",
-        "fridge_zone": "fridge_zone",
-        "stove": "stove_zone",
-        "stove_zone": "stove_zone",
-    }
-    _ITEM_ALIASES = {
-        "red cube": "red_cube",
-        "cube": "red_cube",
-        "red_cube": "red_cube",
-        "left half cube": "half_cube_left",
-        "right half cube": "half_cube_right",
-        "fridge door": "fridge_door",
-        "door": "fridge_door",
-        "fridge_door": "fridge_door",
-        "fridge": "fridge_main",
-        "fridge_main": "fridge_main",
-        "table": "table_surface",
-        "table_surface": "table_surface",
-        "stove": "stove",
-    }
-    _CONTAINER_ALIASES = {
-        "fridge": "fridge_main",
-        "refrigerator": "fridge_main",
-        "fridge_main": "fridge_main",
-        "table": "table_surface",
-        "table_surface": "table_surface",
-        "stove": "stove",
-    }
+    _POI_ALIASES = BACKEND_POI_ALIASES
+    _ITEM_ALIASES = BACKEND_ITEM_ALIASES
+    _CONTAINER_ALIASES = BACKEND_CONTAINER_ALIASES
 
     def __init__(
         self,
@@ -553,21 +536,13 @@ class GoalRegistry:
         - dsl (optional)
         - params (optional dict)
         """
-        print(f"[DEBUG GoalRegistry] resolve_with_hint: task={task!r}, hint={goal_hint}")
         try:
             hinted = self._resolve_from_hint(goal_hint)
         except Exception:
             hinted = None
         if hinted is not None:
-            print(f"[DEBUG GoalRegistry] resolved from hint: {hinted.goal_type}, {hinted.dsl}")
             return hinted
-        print(f"[DEBUG GoalRegistry] falling back to task text: {task}")
-        result = self.resolve(task)
-        if result:
-            print(f"[DEBUG GoalRegistry] resolved from task: {result.goal_type}, {result.dsl}")
-        else:
-            print(f"[DEBUG GoalRegistry] failed to resolve task")
-        return result
+        return self.resolve(task)
 
     def validate(self, goal: GoalSpec) -> GoalValidationResult:
         return self._handler_for(goal.goal_type).validate(goal)

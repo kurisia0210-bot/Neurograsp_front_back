@@ -1,7 +1,8 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 // 导入目标解析器
-import { resolveGoalSpec as defaultResolveGoalSpec } from '../mechanics/GoalParser'
+import { resolveGoalSpec as defaultResolveGoalSpec } from '../core/GoalParser'
+import { normalizeBackendIntent } from '../core/ActionContract'
 
 /**
  * AgentSystem - reusable core loop
@@ -29,6 +30,7 @@ export function useAgentSystem({
   const [autoLoop, setAutoLoop] = useState(false)
   const [lastAction, setLastAction] = useState(null)
   const [lastResult, setLastResult] = useState(null)
+  const [lastEffects, setLastEffects] = useState([])
   const [lastError, setLastError] = useState(null)
   const [lastObservation, setLastObservation] = useState(null)
   const [lastResponse, setLastResponse] = useState(null)
@@ -39,43 +41,6 @@ export function useAgentSystem({
   useEffect(() => {
     agentStateRef.current = agentState
   }, [agentState])
-
-  const buildTaskFacts = useCallback((worldState, effectiveLocation, effectiveHolding) => {
-    const nearby = worldState?.nearby_objects || []
-    const objects = {}
-    const inside = {}
-    const on = {}
-
-    nearby.forEach((obj) => {
-      if (!obj?.id) return
-      const relationText = String(obj.relation || '')
-      objects[obj.id] = {
-        state: obj.state || null,
-        relation: relationText || null
-      }
-
-      const insideMatch = relationText.match(/inside\s+([a-zA-Z0-9_]+)/i)
-      if (insideMatch?.[1]) {
-        inside[obj.id] = insideMatch[1]
-      }
-      const onMatch = relationText.match(/on\s+([a-zA-Z0-9_]+)/i)
-      if (onMatch?.[1]) {
-        on[obj.id] = onMatch[1]
-      }
-    })
-
-    return {
-      agent: {
-        location: effectiveLocation || null,
-        holding: effectiveHolding || null
-      },
-      objects,
-      relations: {
-        inside,
-        on
-      }
-    }
-  }, [])
 
   const perceiveWorld = useCallback((customState = null) => {
     const state = customState || agentStateRef.current
@@ -102,7 +67,6 @@ export function useAgentSystem({
       : null
 
     const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
-    const taskFacts = worldState?.task_facts || buildTaskFacts(worldState, effectiveLocation, effectiveHolding)
 
     return {
       session_id: sessionIdRef.current,
@@ -116,32 +80,59 @@ export function useAgentSystem({
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
       goal_spec: goalSpec,
-      task_facts: taskFacts,
       // P0-2 feed previous action/result back to backend
       last_action: lastAction,
-      last_result: lastResult
+      last_result: lastResult,
+      // Replay/observability: previous-step effects
+      last_effects: lastEffects
     }
-  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, buildTaskFacts])
+  }, [getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
   const executeAction = useCallback((actionPayload) => {
-    console.log('[AgentSystem] Executing:', actionPayload)
+    const normalizedAction = normalizeBackendIntent(actionPayload)
+    console.log('[AgentSystem] Executing:', normalizedAction)
 
-    const newAgentState = { ...agentStateRef.current }
+    const prevAgentState = agentStateRef.current
+    const newAgentState = { ...prevAgentState }
+    const effects = []
+    let executionResult = {
+      success: true,
+      failure_type: null,
+      failure_reason: ''
+    }
 
-    switch (actionPayload.type) {
+    switch (normalizedAction.type) {
       case 'MOVE_TO':
-        if (actionPayload.target_poi) {
-          newAgentState.location = actionPayload.target_poi
+        if (normalizedAction.target_poi) {
+          newAgentState.location = normalizedAction.target_poi
+        } else {
+          executionResult = {
+            success: false,
+            failure_type: null,
+            failure_reason: 'MOVE_TO missing target_poi'
+          }
         }
         break
 
       case 'INTERACT': {
-        const interactionType = actionPayload.interaction_type || 'NONE'
-        const targetItem = actionPayload.target_item
-        let worldExecutionResult = { success: true }
+        const interactionType = normalizedAction.interaction_type || 'NONE'
+        const targetItem = normalizedAction.target_item
+        let worldExecutionResult = { success: true, failure_reason: '' }
 
         if (executeWorldAction) {
-          worldExecutionResult = executeWorldAction(actionPayload, newAgentState) || { success: true }
+          const worldExecutionResultRaw = executeWorldAction(normalizedAction, newAgentState) || {
+            success: true,
+            failure_reason: ''
+          }
+          worldExecutionResult = {
+            success: Boolean(worldExecutionResultRaw.success),
+            failure_reason: worldExecutionResultRaw.failure_reason || ''
+          }
+        }
+        executionResult = {
+          success: worldExecutionResult.success,
+          failure_type: null,
+          failure_reason: worldExecutionResult.failure_reason
         }
 
         if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
@@ -149,6 +140,14 @@ export function useAgentSystem({
         } else if (interactionType === 'PLACE' && worldExecutionResult.success) {
           newAgentState.holding = null
         }
+
+        effects.push({
+          key: `interact.${String(interactionType).toLowerCase()}`,
+          before: targetItem || normalizedAction.target_poi || '',
+          after: worldExecutionResult.success ? 'success' : 'failed',
+          ok: Boolean(worldExecutionResult.success),
+          detail: worldExecutionResult.failure_reason || ''
+        })
         break
       }
 
@@ -159,36 +158,62 @@ export function useAgentSystem({
         break
 
       default:
-        console.warn('Unknown action type:', actionPayload.type)
+        console.warn('Unknown action type:', normalizedAction.type)
+        executionResult = {
+          success: false,
+          failure_type: null,
+          failure_reason: `Unknown action type: ${normalizedAction.type}`
+        }
+    }
+
+    if (prevAgentState.location !== newAgentState.location) {
+      effects.push({
+        key: 'agent.location',
+        before: prevAgentState.location || '',
+        after: newAgentState.location || '',
+        ok: true,
+        detail: ''
+      })
+    }
+
+    if ((prevAgentState.holding || null) !== (newAgentState.holding || null)) {
+      effects.push({
+        key: 'agent.holding',
+        before: prevAgentState.holding || null,
+        after: newAgentState.holding || null,
+        ok: true,
+        detail: ''
+      })
     }
 
     agentStateRef.current = newAgentState
     setAgentState(newAgentState)
-    onActionExecuted(actionPayload, newAgentState)
+    setLastEffects(effects)
+    onActionExecuted(normalizedAction, newAgentState)
 
-    return newAgentState
+    return {
+      action: normalizedAction,
+      agentState: newAgentState,
+      executionResult
+    }
   }, [executeWorldAction, onActionExecuted])
 
-  const recordManualExecution = useCallback((actionPayload, executionResult = null) => {
-    if (!actionPayload || typeof actionPayload !== 'object') return
-
-    const normalizedAction = {
+  const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
+    const applied = executeAction(actionPayload)
+    const committedAction = {
       session_id: sessionIdRef.current,
       episode_id: episodeIdRef.current,
       step_id: stepCounterRef.current,
-      interaction_type: 'NONE',
-      ...actionPayload
+      ...applied.action
     }
-
-    const normalizedResult = executionResult || {
-      success: true,
-      failure_type: null,
-      failure_reason: ''
+    const committedResult = resultOverride || applied.executionResult
+    setLastAction(committedAction)
+    setLastResult(committedResult)
+    return {
+      action: committedAction,
+      executionResult: committedResult
     }
-
-    setLastAction(normalizedAction)
-    setLastResult(normalizedResult)
-  }, [])
+  }, [executeAction])
 
   const tick = useCallback(async () => {
     if (isThinking) return
@@ -207,30 +232,85 @@ export function useAgentSystem({
       if (!response.ok) throw new Error(`Backend error: ${response.status}`)
 
       const data = await response.json()
-      setLastResponse(data)
       setLastError(data.error || null)
       if (typeof data.episode_id === 'number') {
         episodeIdRef.current = data.episode_id
       } else if (typeof data.intent?.episode_id === 'number') {
         episodeIdRef.current = data.intent.episode_id
       }
-      setLastAction(data.intent)
+      const normalizedIntent = normalizeBackendIntent(data.intent)
+      setLastAction(normalizedIntent)
 
       const reflex = data.reflex_verdict
       const isBlocked = reflex && reflex.verdict === 'BLOCK'
-      setLastResult(
+      const adjudicationResult =
         data.execution_result || {
           success: !isBlocked,
           failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
           failure_reason: reflex?.message || ''
         }
-      )
+      const canExecute = !isBlocked && Boolean(adjudicationResult.success)
 
-      if (!isBlocked) {
-        executeAction(data.intent)
+      if (canExecute) {
+        const applied = executeAction(normalizedIntent)
+        setLastResult(applied.executionResult)
+        const responseWithExecution = {
+          ...data,
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: applied.executionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
+      } else if (isBlocked) {
+        const blockedExecutionResult = {
+          success: false,
+          failure_type: 'REFLEX_BLOCK',
+          failure_reason: adjudicationResult.failure_reason || reflex?.message || ''
+        }
+        setLastResult(blockedExecutionResult)
+        setLastEffects([
+          {
+            key: 'reflex.block',
+            before: 'pending',
+            after: 'blocked',
+            ok: false,
+            detail: blockedExecutionResult.failure_reason || ''
+          }
+        ])
+        const responseWithExecution = {
+          ...data,
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: blockedExecutionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
+      } else {
+        const adjudicationFailedExecutionResult = {
+          success: false,
+          failure_type: adjudicationResult.failure_type || 'REASONING_ERROR',
+          failure_reason: adjudicationResult.failure_reason || 'Adjudication failed before execution.'
+        }
+        setLastResult(adjudicationFailedExecutionResult)
+        setLastEffects([
+          {
+            key: 'adjudication.fail',
+            before: 'allowed',
+            after: 'not_executed',
+            ok: false,
+            detail: adjudicationFailedExecutionResult.failure_reason
+          }
+        ])
+        const responseWithExecution = {
+          ...data,
+          intent: normalizedIntent,
+          adjudication_result: adjudicationResult,
+          execution_result: adjudicationFailedExecutionResult
+        }
+        setLastResponse(responseWithExecution)
+        onTickComplete(responseWithExecution, obs)
       }
-
-      onTickComplete(data, obs)
     } catch (e) {
       console.error('Tick error:', e)
       setLastAction({
@@ -245,6 +325,15 @@ export function useAgentSystem({
         failure_type: 'REASONING_ERROR',
         failure_reason: e.message
       })
+      setLastEffects([
+        {
+          key: 'tick.error',
+          before: 'request',
+          after: 'failed',
+          ok: false,
+          detail: e.message
+        }
+      ])
       setLastError({
         error_code: 'E_REASONING_RUNTIME',
         module: 'frontend_bridge',
@@ -286,6 +375,7 @@ export function useAgentSystem({
     setAgentState(resetState)
     setLastAction(null)
     setLastResult(null)
+    setLastEffects([])
     setLastError(null)
     setLastObservation(null)
     setLastResponse(null)
@@ -302,6 +392,7 @@ export function useAgentSystem({
     autoLoop,
     lastAction,
     lastResult,
+    lastEffects,
     lastError,
     lastObservation,
     lastResponse,
@@ -321,7 +412,7 @@ export function useAgentSystem({
 
     perceiveWorld,
     executeAction,
-    recordManualExecution
+    commitManualAction
   }
 }
 
@@ -345,3 +436,4 @@ export function useAgentSystemContext() {
   }
   return context
 }
+

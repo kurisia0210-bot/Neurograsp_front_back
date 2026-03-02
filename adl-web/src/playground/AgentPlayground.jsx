@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
@@ -10,18 +10,19 @@ import {
   ActionTriggerBubble,
   executeRegisteredAction
 } from '../components/game/mechanics/ActionRegistry'
+import { ActionType } from '../components/game/core/ActionContract'
 import {
   AgentBrainDashboard,
   AgentStatusDisplay
 } from '../components/game/mechanics/AgentBrainDashboard'
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
-import { useWorldStateManager } from '../components/game/mechanics/WorldStateManager'
+import { useWorldStateManager } from '../components/game/core/WorldStateManager'
 
 const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
-const FRIDGE_MAIN_DROP_HALF_SIZE = [0.55, 0.45] // smaller snap zone [halfX, halfZ]
+const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
 
 function isInFridgeMainDropZone(position) {
@@ -191,19 +192,18 @@ export function AgentPlayground({ onBack }) {
 
   const moveAgentTo = (targetPoi, label) => {
     const intent = {
-      type: 'MOVE_TO',
+      type: ActionType.MOVE_TO,
       target_poi: targetPoi,
       content: `Manual move to ${targetPoi}`
     }
 
     const triggerResult = executeRegisteredAction(intent, {
       onMove: () => {
+        if (typeof agentSystem.commitManualAction === 'function') {
+          agentSystem.commitManualAction(intent)
+          return
+        }
         agentSystem.executeAction(intent)
-        agentSystem.recordManualExecution(intent, {
-          success: true,
-          failure_type: null,
-          failure_reason: ''
-        })
       }
     })
 
@@ -303,23 +303,7 @@ export function AgentPlayground({ onBack }) {
           <mesh
             position={[0.5, 1, 0.51]}
             rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
-            onClick={() => {
-              const wasOpen = worldStateManager.fridgeOpen
-              worldStateManager.toggleFridgeDoor()
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: 'fridge_door',
-                  interaction_type: wasOpen ? 'CLOSE' : 'OPEN',
-                  content: `Manual ${wasOpen ? 'close' : 'open'} fridge_door`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
-            }}
+            onClick={worldStateManager.toggleFridgeDoor}
           >
             <mesh position={[-0.5, 0, 0]}>
               <boxGeometry args={[1, 2, 0.05]} />
@@ -332,13 +316,25 @@ export function AgentPlayground({ onBack }) {
           </mesh>
         </group>
 
+        <mesh position={[FRIDGE_MAIN_DROP_CENTER[0], 1.15, FRIDGE_MAIN_DROP_CENTER[1]]}>
+          <boxGeometry
+            args={[FRIDGE_MAIN_DROP_HALF_SIZE[0] * 2, 1.1, FRIDGE_MAIN_DROP_HALF_SIZE[1] * 2]}
+          />
+          <meshStandardMaterial
+            color={worldStateManager.fridgeOpen ? '#22c55e' : '#64748b'}
+            transparent
+            opacity={worldStateManager.fridgeOpen ? 0.18 : 0.08}
+            wireframe
+          />
+        </mesh>
+
         {worldStateManager.cubes.map((cube) => (
           <WholeCube
             key={cube.id}
             position={cube.position}
             dragHeight={cube.dragHeight}
             isHeldByAgent={cube.state === 'in_hand'}
-            allowClickThroughWhileDragging={false}
+            allowClickThroughWhileDragging={true}
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
@@ -353,100 +349,32 @@ export function AgentPlayground({ onBack }) {
 
               autoSnapLockRef.current = true
               worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: 'fridge_main',
-                  interaction_type: 'PLACE',
-                  content: `Manual place ${cube.id} into fridge_main (auto snap)`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
               setActionBubble({
                 visible: true,
                 status: 'SUCCESS',
-                message: `Auto snap: ${cube.id} -> fridge_main`
+                message: 'Auto snap: red_cube -> fridge_main'
               })
-              setBehaviorLine(`Action: place ${cube.id} -> fridge_main (auto snap)`)
+              setBehaviorLine('Action: place red_cube -> fridge_main (auto snap)')
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
               worldStateManager.pickUpCube(cube.id)
-              agentSystem.recordManualExecution(
-                {
-                  type: 'INTERACT',
-                  target_item: cube.id,
-                  interaction_type: 'PICK',
-                  content: `Manual pick ${cube.id}`
-                },
-                {
-                  success: true,
-                  failure_type: null,
-                  failure_reason: ''
-                }
-              )
             }}
             onPlace={() => {
-              if (autoSnapLockRef.current) {
-                autoSnapLockRef.current = false
-                return
-              }
-
               const currentPos = cube.position
-              const inFridgeZone = isInFridgeMainDropZone(currentPos)
+              const inFridgeZone =
+                Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
 
               if (inFridgeZone) {
-                worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-                agentSystem.recordManualExecution(
-                  {
-                    type: 'INTERACT',
-                    target_item: 'fridge_main',
-                    interaction_type: 'PLACE',
-                    content: `Manual place ${cube.id} into fridge_main`
-                  },
-                  {
-                    success: true,
-                    failure_type: null,
-                    failure_reason: ''
-                  }
-                )
+                worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
               } else {
                 worldStateManager.placeCube(cube.id, currentPos, 'on_table')
-                agentSystem.recordManualExecution(
-                  {
-                    type: 'INTERACT',
-                    target_item: 'table_surface',
-                    interaction_type: 'PLACE',
-                    content: `Manual place ${cube.id} on table_surface`
-                  },
-                  {
-                    success: true,
-                    failure_type: null,
-                    failure_reason: ''
-                  }
-                )
               }
             }}
             slicingZonePos={[-3, 0, -0.5]}
             slicingZoneSize={[1, 1]}
           />
         ))}
-
-        <mesh position={[FRIDGE_MAIN_DROP_CENTER[0], 1.15, FRIDGE_MAIN_DROP_CENTER[1]]}>
-          <boxGeometry
-            args={[FRIDGE_MAIN_DROP_HALF_SIZE[0] * 2, 1.1, FRIDGE_MAIN_DROP_HALF_SIZE[1] * 2]}
-          />
-          <meshStandardMaterial
-            color={worldStateManager.fridgeOpen ? '#22c55e' : '#64748b'}
-            transparent
-            opacity={worldStateManager.fridgeOpen ? 0.18 : 0.08}
-            wireframe
-          />
-        </mesh>
 
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
@@ -527,5 +455,3 @@ export function AgentPlayground({ onBack }) {
     </div>
   )
 }
-
-

@@ -4,6 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from core.goal.alias_registry import (
+    BACKEND_CONTAINER_ALIASES,
+    BACKEND_ITEM_ALIASES,
+    BACKEND_POI_ALIASES,
+)
 from schema.payload import ObservationPayload
 
 
@@ -37,29 +42,9 @@ class GoalEvaluator:
     _ITEMS = {"red_cube", "half_cube_left", "half_cube_right"}
     _CONTAINERS = {"fridge_main", "table_surface", "stove"}
 
-    _POI_ALIASES = {
-        "table": "table_center",
-        "center": "table_center",
-        "fridge": "fridge_zone",
-        "fridge_zone": "fridge_zone",
-        "stove": "stove_zone",
-        "stove_zone": "stove_zone",
-    }
-    _ITEM_ALIASES = {
-        "red cube": "red_cube",
-        "cube": "red_cube",
-        "red_cube": "red_cube",
-        "left half cube": "half_cube_left",
-        "right half cube": "half_cube_right",
-    }
-    _CONTAINER_ALIASES = {
-        "fridge": "fridge_main",
-        "refrigerator": "fridge_main",
-        "fridge_main": "fridge_main",
-        "table": "table_surface",
-        "table_surface": "table_surface",
-        "stove": "stove",
-    }
+    _POI_ALIASES = BACKEND_POI_ALIASES
+    _ITEM_ALIASES = BACKEND_ITEM_ALIASES
+    _CONTAINER_ALIASES = BACKEND_CONTAINER_ALIASES
 
     def parse_goal(self, task: str) -> Optional[ParsedGoal]:
         if not task:

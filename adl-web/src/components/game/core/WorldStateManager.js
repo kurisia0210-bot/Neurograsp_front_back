@@ -4,10 +4,33 @@ const DOOR_OPEN_ANGLE = 2.0
 const DOOR_CLOSED_ANGLE = 0
 const DOOR_ANIM_STEP = 0.14
 const DOOR_ANIM_INTERVAL_MS = 16
+const DEFAULT_AGENT_STATE = {
+  location: 'table_center',
+  holding: null
+}
+
+function inferHoldingFromCubes(cubeList = []) {
+  const holdingCube = cubeList.find((cube) => cube.state === 'in_hand')
+  return holdingCube?.id || null
+}
+
+function normalizeAgentState(rawAgentState, cubes = []) {
+  const safeRaw = rawAgentState || {}
+  const hasHolding = Object.prototype.hasOwnProperty.call(safeRaw, 'holding')
+  return {
+    location: safeRaw.location || DEFAULT_AGENT_STATE.location,
+    holding: hasHolding ? safeRaw.holding : inferHoldingFromCubes(cubes)
+  }
+}
+
+function isPositionTriplet(value) {
+  return Array.isArray(value) && value.length === 3 && value.every((n) => Number.isFinite(n))
+}
 
 export function useWorldStateManager(options = {}) {
   const {
     initialFridgeOpen = false,
+    initialAgentState = DEFAULT_AGENT_STATE,
     initialCubes = [
       {
         id: 'red_cube',
@@ -20,6 +43,7 @@ export function useWorldStateManager(options = {}) {
     ]
   } = options
 
+  const [agentState, setAgentState] = useState(() => normalizeAgentState(initialAgentState, initialCubes))
   const [fridgeOpen, setFridgeOpen] = useState(initialFridgeOpen)
   const [fridgeDoorAngle, setFridgeDoorAngle] = useState(initialFridgeOpen ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE)
   const [cubes, setCubes] = useState(initialCubes)
@@ -58,27 +82,37 @@ export function useWorldStateManager(options = {}) {
   }, [cubes])
 
   const pickUpCube = useCallback((cubeId) => {
+    let didPick = false
     setCubes((prevCubes) =>
       prevCubes.map((cube) => {
         if (cube.id === cubeId && cube.state === 'on_table') {
+          didPick = true
           console.log(`Mouse PICK: ${cube.name}`)
           return { ...cube, state: 'in_hand' }
         }
         return cube
       })
     )
+    if (didPick) {
+      setAgentState((prev) => ({ ...prev, holding: cubeId }))
+    }
   }, [])
 
   const placeCube = useCallback((cubeId, position, newState = 'on_table') => {
+    let didPlace = false
     setCubes((prevCubes) =>
       prevCubes.map((cube) => {
         if (cube.id === cubeId && cube.state === 'in_hand') {
+          didPlace = true
           console.log(`Mouse PLACE: ${cube.name} -> ${newState}`)
           return { ...cube, state: newState, position }
         }
         return cube
       })
     )
+    if (didPlace) {
+      setAgentState((prev) => ({ ...prev, holding: null }))
+    }
   }, [])
 
   const isHolding = useCallback((cubeId) => {
@@ -115,8 +149,32 @@ export function useWorldStateManager(options = {}) {
 
   const executeWorldAction = useCallback((actionPayload) => {
     console.log('[World] Executing:', actionPayload)
+    const currentAgentState = normalizeAgentState(agentState, cubes)
+    const withAgentState = (result, nextAgentState = currentAgentState) => ({
+      ...result,
+      next_agent_state: normalizeAgentState(nextAgentState, cubes)
+    })
 
-    const interactionType = actionPayload.interaction_type || 'NONE'
+    const actionType = String(actionPayload?.type || 'INTERACT').toUpperCase()
+    if (actionType === 'MOVE_TO') {
+      const targetPoi = actionPayload?.target_poi
+      if (!targetPoi) {
+        return withAgentState({ success: false, failure_reason: 'MOVE_TO missing target_poi' })
+      }
+      const nextAgentState = { ...currentAgentState, location: targetPoi }
+      setAgentState(nextAgentState)
+      return withAgentState({ success: true }, nextAgentState)
+    }
+
+    if (actionType === 'THINK' || actionType === 'SPEAK' || actionType === 'IDLE' || actionType === 'FINISH') {
+      return withAgentState({ success: true })
+    }
+
+    if (actionType !== 'INTERACT') {
+      return withAgentState({ success: false, failure_reason: `Unsupported action type: ${actionType}` })
+    }
+
+    const interactionType = String(actionPayload.interaction_type || 'NONE').toUpperCase()
     const targetItem = actionPayload.target_item
     const targetLocation = actionPayload.target_location || actionPayload.target_poi || targetItem
     const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
@@ -125,7 +183,7 @@ export function useWorldStateManager(options = {}) {
       case 'PICK': {
         const pickTarget = cubes.find((cube) => cube.id === targetItem && cube.state === 'on_table')
         if (!pickTarget) {
-          return { success: false, failure_reason: `PICK precondition failed for ${targetItem}` }
+          return withAgentState({ success: false, failure_reason: `PICK precondition failed for ${targetItem}` })
         }
         setCubes((prevCubes) =>
           prevCubes.map((cube) => {
@@ -136,15 +194,17 @@ export function useWorldStateManager(options = {}) {
             return cube
           })
         )
-        return { success: true }
+        const nextAgentState = { ...currentAgentState, holding: targetItem }
+        setAgentState(nextAgentState)
+        return withAgentState({ success: true }, nextAgentState)
       }
 
       case 'PLACE': {
         if (!holdingCube) {
-          return { success: false, failure_reason: 'PLACE precondition failed: no item in hand' }
+          return withAgentState({ success: false, failure_reason: 'PLACE precondition failed: no item in hand' })
         }
         if (targetLocation === 'fridge_main' && !fridgeOpen) {
-          return { success: false, failure_reason: 'PLACE precondition failed: fridge door is closed' }
+          return withAgentState({ success: false, failure_reason: 'PLACE precondition failed: fridge door is closed' })
         }
 
         const heldCubeId = holdingCube.id
@@ -157,6 +217,10 @@ export function useWorldStateManager(options = {}) {
               }
               if (targetLocation === 'table_surface') {
                 console.log(`Placed ${cube.name} on table`)
+                const explicitTargetPosition = actionPayload?.target_position
+                if (isPositionTriplet(explicitTargetPosition)) {
+                  return { ...cube, state: 'on_table', position: explicitTargetPosition }
+                }
                 const tablePositions = [
                   [-0.8, 1.7 + 0.125, -0.5],
                   [-0.4, 1.7 + 0.125, -0.5],
@@ -173,55 +237,67 @@ export function useWorldStateManager(options = {}) {
             return cube
           })
         )
+        const nextAgentState = { ...currentAgentState, holding: null }
         if (targetLocation === 'fridge_main' || targetLocation === 'table_surface') {
-          return { success: true }
+          setAgentState(nextAgentState)
         }
-        return { success: false, failure_reason: `PLACE unsupported target: ${targetLocation}` }
+        if (targetLocation === 'fridge_main' || targetLocation === 'table_surface') {
+          return withAgentState({ success: true }, nextAgentState)
+        }
+        return withAgentState({ success: false, failure_reason: `PLACE unsupported target: ${targetLocation}` })
       }
 
       case 'OPEN':
         if (targetItem === 'fridge_door') {
           if (fridgeOpen) {
-            return { success: false, failure_reason: 'OPEN precondition failed: fridge door already open' }
+            return withAgentState({ success: false, failure_reason: 'OPEN precondition failed: fridge door already open' })
           }
           openFridgeDoor('agent')
-          return { success: true }
+          return withAgentState({ success: true })
         }
-        return { success: false, failure_reason: `OPEN unsupported target: ${targetItem}` }
+        return withAgentState({ success: false, failure_reason: `OPEN unsupported target: ${targetItem}` })
 
       case 'CLOSE':
         if (targetItem === 'fridge_door') {
           if (!fridgeOpen) {
-            return { success: false, failure_reason: 'CLOSE precondition failed: fridge door already closed' }
+            return withAgentState({ success: false, failure_reason: 'CLOSE precondition failed: fridge door already closed' })
           }
           closeFridgeDoor('agent')
-          return { success: true }
+          return withAgentState({ success: true })
         }
-        return { success: false, failure_reason: `CLOSE unsupported target: ${targetItem}` }
+        return withAgentState({ success: false, failure_reason: `CLOSE unsupported target: ${targetItem}` })
 
       case 'NONE':
         if (targetItem === 'fridge_door') {
           toggleFridgeDoor()
-          return { success: true }
+          return withAgentState({ success: true })
         }
-        return { success: false, failure_reason: `NONE unsupported target: ${targetItem}` }
+        return withAgentState({ success: false, failure_reason: `NONE unsupported target: ${targetItem}` })
 
       default:
         console.log(`Unknown interaction: ${interactionType}`)
-        return { success: false, failure_reason: `Unknown interaction: ${interactionType}` }
+        return withAgentState({ success: false, failure_reason: `Unknown interaction: ${interactionType}` })
     }
-  }, [openFridgeDoor, closeFridgeDoor, toggleFridgeDoor, cubes, fridgeOpen])
+  }, [agentState, openFridgeDoor, closeFridgeDoor, toggleFridgeDoor, cubes, fridgeOpen])
 
-  const getWorldState = useCallback((agentState) => {
+  const getWorldState = useCallback(() => {
     const nearby_objects = []
     const holdingCube = getHoldingCube()
     const inferredHolding = holdingCube?.id || null
+    const resolvedAgentState = normalizeAgentState(agentState, cubes)
+    const effectiveHolding = inferredHolding || resolvedAgentState.holding || null
 
     cubes.forEach((cube) => {
+      const relation =
+        cube.state === 'in_hand'
+          ? 'held by agent'
+          : cube.state === 'in_fridge'
+            ? 'inside fridge_main'
+            : 'on table_surface'
       nearby_objects.push({
         id: cube.id,
         state: cube.state,
-        relation: cube.state === 'in_hand' ? 'held by agent' : 'on table_surface'
+        relation
       })
     })
 
@@ -245,29 +321,33 @@ export function useWorldStateManager(options = {}) {
 
     return {
       agent: {
-        location: agentState.location,
-        holding: inferredHolding
+        location: resolvedAgentState.location,
+        holding: effectiveHolding
       },
       nearby_objects
     }
-  }, [cubes, fridgeOpen, getHoldingCube])
+  }, [agentState, cubes, fridgeOpen, getHoldingCube])
+
+  const getWorldFacts = useCallback(() => {
+    return getWorldState()
+  }, [getWorldState])
 
   const resetWorldState = useCallback(() => {
     stopDoorAnimation()
     setFridgeOpen(initialFridgeOpen)
     setFridgeDoorAngle(initialFridgeOpen ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE)
+    setAgentState(normalizeAgentState(initialAgentState, initialCubes))
     setCubes(initialCubes)
     console.log('World state reset')
-  }, [initialFridgeOpen, initialCubes, stopDoorAnimation])
+  }, [initialFridgeOpen, initialAgentState, initialCubes, stopDoorAnimation])
 
   return {
+    agentState,
     fridgeOpen,
     fridgeDoorAngle,
     cubes,
     holdingCube: getHoldingCube(),
 
-    setFridgeOpen,
-    setCubes,
     pickUpCube,
     placeCube,
     isHolding,
@@ -276,6 +356,7 @@ export function useWorldStateManager(options = {}) {
     toggleFridgeDoor,
     executeWorldAction,
     getWorldState,
+    getWorldFacts,
     resetWorldState,
 
     getHoldingCube

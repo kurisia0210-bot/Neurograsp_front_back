@@ -63,8 +63,8 @@ export function normalizePoi(raw) {
  */
 export function normalizeItem(raw) {
   const key = normalizeToken(raw, true)
-  const mapped = ITEM_ALIAS[key] || key.replace(/ /g, '_')
-  return mapped || null
+  const mapped = ITEM_ALIAS[key] || null
+  return mapped
 }
 
 /**
@@ -72,8 +72,8 @@ export function normalizeItem(raw) {
  */
 export function normalizeContainer(raw) {
   const key = normalizeToken(raw, true)
-  const mapped = CONTAINER_ALIAS[key] || key.replace(/ /g, '_')
-  return mapped || null
+  const mapped = CONTAINER_ALIAS[key] || null
+  return mapped
 }
 
 /**
