@@ -1,11 +1,36 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 
-// 导入目标解析器
 import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
 import { normalizeBackendIntent } from './ActionContract'
+import { resolveRegisteredAction } from './registry'
+
+function buildFallbackWorldSnapshot() {
+  return {
+    nearby_objects: [],
+    timestamp: Date.now() / 1000,
+    agent: {
+      location: 'table_center',
+      holding: null
+    }
+  }
+}
+
+function normalizeWorldSnapshot(rawWorldState) {
+  const worldState = rawWorldState || buildFallbackWorldSnapshot()
+  const worldAgent = worldState.agent || {}
+  return {
+    ...worldState,
+    nearby_objects: worldState.nearby_objects || [],
+    agent: {
+      location: worldAgent.location || 'table_center',
+      holding: Object.prototype.hasOwnProperty.call(worldAgent, 'holding') ? worldAgent.holding : null
+    }
+  }
+}
 
 /**
- * AgentSystem - reusable core loop
+ * AgentSystem - orchestration loop only.
+ * World business state is owned by WorldStateManager.
  */
 export function useAgentSystem({
   onActionExecuted = () => {},
@@ -17,12 +42,6 @@ export function useAgentSystem({
   initialTask = 'Put red cube in fridge',
   backendUrl = 'http://127.0.0.1:8001/api/tick'
 }) {
-  const [agentState, setAgentState] = useState({
-    location: 'table_center',
-    holding: null
-  })
-
-  // P0-1 session/step tracking
   const sessionIdRef = useRef(crypto.randomUUID())
   const episodeIdRef = useRef(null)
   const stepCounterRef = useRef(0)
@@ -37,39 +56,36 @@ export function useAgentSystem({
   const [lastResponse, setLastResponse] = useState(null)
   const [userInstruction, setUserInstruction] = useState(initialTask)
 
-  const agentStateRef = useRef(agentState)
+  const readWorldSnapshot = useCallback(() => {
+    const rawWorldState = getWorldFacts
+      ? getWorldFacts()
+      : getWorldState
+        ? getWorldState()
+        : buildFallbackWorldSnapshot()
+    return normalizeWorldSnapshot(rawWorldState)
+  }, [getWorldFacts, getWorldState])
 
-  useEffect(() => {
-    agentStateRef.current = agentState
-  }, [agentState])
+  const buildCommittedAction = useCallback((action) => {
+    return {
+      session_id: sessionIdRef.current,
+      episode_id: episodeIdRef.current,
+      step_id: stepCounterRef.current,
+      ...action
+    }
+  }, [])
 
-  const perceiveWorld = useCallback((customState = null) => {
-    const state = customState || agentStateRef.current
+  const perceiveWorld = useCallback(() => {
+    const worldState = readWorldSnapshot()
+    const worldAgent = worldState.agent
 
-    // P0-1 increment step per request
     stepCounterRef.current += 1
 
-    const worldState = getWorldFacts
-      ? getWorldFacts(state)
-      : getWorldState
-        ? getWorldState(state)
-      : {
-          nearby_objects: [],
-          timestamp: Date.now() / 1000
-        }
-    const worldAgent = worldState?.agent || {}
-    const effectiveLocation = worldAgent.location || state.location
-    const effectiveHolding = Object.prototype.hasOwnProperty.call(worldAgent, 'holding')
-      ? worldAgent.holding
-      : state.holding
-
-    // 使用传入的resolveGoalSpec函数，如果没有则使用默认的
     const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
     const parsedGoalSpec = typeof goalResolver === 'function'
-      ? goalResolver(userInstruction, state, worldState)
+      ? goalResolver(userInstruction, worldAgent, worldState)
       : null
 
-    const goalSpec = worldState?.goal_spec || parsedGoalSpec || null
+    const goalSpec = worldState.goal_spec || parsedGoalSpec || null
 
     return {
       session_id: sessionIdRef.current,
@@ -77,26 +93,46 @@ export function useAgentSystem({
       step_id: stepCounterRef.current,
       timestamp: Date.now() / 1000,
       agent: {
-        location: effectiveLocation,
-        holding: effectiveHolding
+        location: worldAgent.location,
+        holding: worldAgent.holding
       },
       nearby_objects: worldState.nearby_objects || [],
       global_task: userInstruction,
       goal_spec: goalSpec,
-      // P0-2 feed previous action/result back to backend
       last_action: lastAction,
       last_result: lastResult,
-      // Replay/observability: previous-step effects
       last_effects: lastEffects
     }
-  }, [getWorldFacts, getWorldState, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
+  }, [readWorldSnapshot, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
   const executeAction = useCallback((actionPayload) => {
-    const normalizedAction = normalizeBackendIntent(actionPayload)
-    console.log('[AgentSystem] Executing:', normalizedAction)
-
-    const prevAgentState = agentStateRef.current
-    const newAgentState = { ...prevAgentState }
+    const resolved = resolveRegisteredAction(actionPayload)
+    if (!resolved.handled || !resolved.intent) {
+      const failedAction = normalizeBackendIntent(actionPayload)
+      const executionResult = {
+        success: false,
+        failure_type: resolved.status || 'NO_HANDLER',
+        failure_reason: resolved.message || 'Action could not be resolved by registry'
+      }
+      setLastEffects([
+        {
+          key: 'registry.resolve',
+          before: 'pending',
+          after: 'failed',
+          ok: false,
+          detail: executionResult.failure_reason
+        }
+      ])
+      return {
+        action: failedAction,
+        agentState: readWorldSnapshot().agent,
+        executionResult
+      }
+    }
+    const normalizedAction = resolved.intent
+    const resolvedActionKey = resolved.actionKey
+    const beforeSnapshot = readWorldSnapshot()
+    const beforeAgent = beforeSnapshot.agent
     const effects = []
     let executionResult = {
       success: true,
@@ -105,51 +141,53 @@ export function useAgentSystem({
     }
 
     switch (normalizedAction.type) {
-      case 'MOVE_TO':
-        if (normalizedAction.target_poi) {
-          newAgentState.location = normalizedAction.target_poi
-        } else {
+      case 'MOVE_TO': {
+        if (!normalizedAction.target_poi) {
           executionResult = {
             success: false,
             failure_type: null,
             failure_reason: 'MOVE_TO missing target_poi'
           }
+          break
+        }
+        if (typeof executeWorldAction !== 'function') {
+          executionResult = {
+            success: false,
+            failure_type: 'EXECUTOR_MISSING',
+            failure_reason: 'executeWorldAction is not configured'
+          }
+          break
+        }
+        const worldResult = executeWorldAction(normalizedAction) || {}
+        executionResult = {
+          success: Boolean(worldResult.success),
+          failure_type: worldResult.failure_type || null,
+          failure_reason: worldResult.failure_reason || ''
         }
         break
+      }
 
       case 'INTERACT': {
-        const interactionType = normalizedAction.interaction_type || 'NONE'
-        const targetItem = normalizedAction.target_item
-        let worldExecutionResult = { success: true, failure_reason: '' }
-
-        if (executeWorldAction) {
-          const worldExecutionResultRaw = executeWorldAction(normalizedAction, newAgentState) || {
-            success: true,
-            failure_reason: ''
+        if (typeof executeWorldAction !== 'function') {
+          executionResult = {
+            success: false,
+            failure_type: 'EXECUTOR_MISSING',
+            failure_reason: 'executeWorldAction is not configured'
           }
-          worldExecutionResult = {
-            success: Boolean(worldExecutionResultRaw.success),
-            failure_reason: worldExecutionResultRaw.failure_reason || ''
-          }
+          break
         }
+        const worldResult = executeWorldAction(normalizedAction) || {}
         executionResult = {
-          success: worldExecutionResult.success,
-          failure_type: null,
-          failure_reason: worldExecutionResult.failure_reason
+          success: Boolean(worldResult.success),
+          failure_type: worldResult.failure_type || null,
+          failure_reason: worldResult.failure_reason || ''
         }
-
-        if (interactionType === 'PICK' && targetItem && worldExecutionResult.success) {
-          newAgentState.holding = targetItem
-        } else if (interactionType === 'PLACE' && worldExecutionResult.success) {
-          newAgentState.holding = null
-        }
-
         effects.push({
-          key: `interact.${String(interactionType).toLowerCase()}`,
-          before: targetItem || normalizedAction.target_poi || '',
-          after: worldExecutionResult.success ? 'success' : 'failed',
-          ok: Boolean(worldExecutionResult.success),
-          detail: worldExecutionResult.failure_reason || ''
+          key: `interact.${String(resolvedActionKey || normalizedAction.interaction_type || 'none').toLowerCase()}`,
+          before: normalizedAction.target_item || normalizedAction.target_poi || '',
+          after: executionResult.success ? 'success' : 'failed',
+          ok: executionResult.success,
+          detail: executionResult.failure_reason || ''
         })
         break
       }
@@ -161,7 +199,6 @@ export function useAgentSystem({
         break
 
       default:
-        console.warn('Unknown action type:', normalizedAction.type)
         executionResult = {
           success: false,
           failure_type: null,
@@ -169,54 +206,56 @@ export function useAgentSystem({
         }
     }
 
-    if (prevAgentState.location !== newAgentState.location) {
+    const afterSnapshot = readWorldSnapshot()
+    const afterAgent = afterSnapshot.agent
+
+    if ((beforeAgent.location || '') !== (afterAgent.location || '')) {
       effects.push({
         key: 'agent.location',
-        before: prevAgentState.location || '',
-        after: newAgentState.location || '',
+        before: beforeAgent.location || '',
+        after: afterAgent.location || '',
         ok: true,
         detail: ''
       })
     }
 
-    if ((prevAgentState.holding || null) !== (newAgentState.holding || null)) {
+    if ((beforeAgent.holding || null) !== (afterAgent.holding || null)) {
       effects.push({
         key: 'agent.holding',
-        before: prevAgentState.holding || null,
-        after: newAgentState.holding || null,
+        before: beforeAgent.holding || null,
+        after: afterAgent.holding || null,
         ok: true,
         detail: ''
       })
     }
 
-    agentStateRef.current = newAgentState
-    setAgentState(newAgentState)
     setLastEffects(effects)
-    onActionExecuted(normalizedAction, newAgentState)
+    onActionExecuted(normalizedAction, afterAgent)
 
     return {
       action: normalizedAction,
-      agentState: newAgentState,
+      agentState: afterAgent,
       executionResult
     }
-  }, [executeWorldAction, onActionExecuted])
+  }, [executeWorldAction, onActionExecuted, readWorldSnapshot])
 
-  const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
+  const dispatchIntent = useCallback((actionPayload, options = {}) => {
+    const { resultOverride = null } = options
     const applied = executeAction(actionPayload)
-    const committedAction = {
-      session_id: sessionIdRef.current,
-      episode_id: episodeIdRef.current,
-      step_id: stepCounterRef.current,
-      ...applied.action
-    }
+    const committedAction = buildCommittedAction(applied.action)
     const committedResult = resultOverride || applied.executionResult
     setLastAction(committedAction)
     setLastResult(committedResult)
     return {
       action: committedAction,
-      executionResult: committedResult
+      executionResult: committedResult,
+      agentState: applied.agentState
     }
-  }, [executeAction])
+  }, [executeAction, buildCommittedAction])
+
+  const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
+    return dispatchIntent(actionPayload, { resultOverride })
+  }, [dispatchIntent])
 
   const tick = useCallback(async () => {
     if (isThinking) return
@@ -242,7 +281,7 @@ export function useAgentSystem({
         episodeIdRef.current = data.intent.episode_id
       }
       const normalizedIntent = normalizeBackendIntent(data.intent)
-      setLastAction(normalizedIntent)
+      const committedIntent = buildCommittedAction(normalizedIntent)
 
       const reflex = data.reflex_verdict
       const isBlocked = reflex && reflex.verdict === 'BLOCK'
@@ -255,11 +294,10 @@ export function useAgentSystem({
       const canExecute = !isBlocked && Boolean(adjudicationResult.success)
 
       if (canExecute) {
-        const applied = executeAction(normalizedIntent)
-        setLastResult(applied.executionResult)
+        const applied = dispatchIntent(normalizedIntent)
         const responseWithExecution = {
           ...data,
-          intent: normalizedIntent,
+          intent: applied.action,
           adjudication_result: adjudicationResult,
           execution_result: applied.executionResult
         }
@@ -271,6 +309,7 @@ export function useAgentSystem({
           failure_type: 'REFLEX_BLOCK',
           failure_reason: adjudicationResult.failure_reason || reflex?.message || ''
         }
+        setLastAction(committedIntent)
         setLastResult(blockedExecutionResult)
         setLastEffects([
           {
@@ -283,7 +322,7 @@ export function useAgentSystem({
         ])
         const responseWithExecution = {
           ...data,
-          intent: normalizedIntent,
+          intent: committedIntent,
           adjudication_result: adjudicationResult,
           execution_result: blockedExecutionResult
         }
@@ -295,6 +334,7 @@ export function useAgentSystem({
           failure_type: adjudicationResult.failure_type || 'REASONING_ERROR',
           failure_reason: adjudicationResult.failure_reason || 'Adjudication failed before execution.'
         }
+        setLastAction(committedIntent)
         setLastResult(adjudicationFailedExecutionResult)
         setLastEffects([
           {
@@ -307,7 +347,7 @@ export function useAgentSystem({
         ])
         const responseWithExecution = {
           ...data,
-          intent: normalizedIntent,
+          intent: committedIntent,
           adjudication_result: adjudicationResult,
           execution_result: adjudicationFailedExecutionResult
         }
@@ -315,7 +355,6 @@ export function useAgentSystem({
         onTickComplete(responseWithExecution, obs)
       }
     } catch (e) {
-      console.error('Tick error:', e)
       setLastAction({
         session_id: sessionIdRef.current,
         episode_id: episodeIdRef.current,
@@ -348,7 +387,7 @@ export function useAgentSystem({
     } finally {
       setIsThinking(false)
     }
-  }, [isThinking, perceiveWorld, backendUrl, executeAction, onTickComplete])
+  }, [isThinking, perceiveWorld, backendUrl, dispatchIntent, buildCommittedAction, onTickComplete])
 
   useEffect(() => {
     if (!autoLoop) return
@@ -369,13 +408,6 @@ export function useAgentSystem({
   }
 
   const resetAgent = () => {
-    const resetState = {
-      location: 'table_center',
-      holding: null
-    }
-
-    agentStateRef.current = resetState
-    setAgentState(resetState)
     setLastAction(null)
     setLastResult(null)
     setLastEffects([])
@@ -383,14 +415,14 @@ export function useAgentSystem({
     setLastObservation(null)
     setLastResponse(null)
 
-    // P0-1/P0-3: same session, start a new episode locally.
-    // NOTE(super-ahead, skipped): no explicit backend RESET action/event yet.
     episodeIdRef.current = null
     stepCounterRef.current = 0
   }
 
+  const currentAgentState = readWorldSnapshot().agent
+
   return {
-    agentState,
+    agentState: currentAgentState,
     isThinking,
     autoLoop,
     lastAction,
@@ -415,7 +447,8 @@ export function useAgentSystem({
 
     perceiveWorld,
     executeAction,
-    commitManualAction
+    commitManualAction,
+    dispatchIntent
   }
 }
 
@@ -439,4 +472,3 @@ export function useAgentSystemContext() {
   }
   return context
 }
-

@@ -91,7 +91,7 @@ export function Level1({ onBack }) {
   const lighting = usePlaygroundLightingSettings()
 
   const getWorldState = useCallback(
-    (agentState) => {
+    (agentState = { location: 'table_center', holding: null }) => {
       const nearby_objects = [
         {
           id: 'fridge_main',
@@ -230,7 +230,7 @@ export function Level1({ onBack }) {
         payload.target_location = targetLocation
       }
 
-      const result = executeWorldAction(payload)
+      const result = agentSystem.dispatchIntent(payload)?.executionResult
       if (result?.success) {
         setActionLine(`Action: ${String(interactionType).toLowerCase()} ${targetItem}`)
       } else {
@@ -238,7 +238,7 @@ export function Level1({ onBack }) {
       }
       return result
     },
-    [executeWorldAction]
+    [agentSystem.dispatchIntent]
   )
 
   const handleReset = () => {
