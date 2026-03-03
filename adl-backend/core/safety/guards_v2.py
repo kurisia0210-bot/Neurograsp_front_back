@@ -8,7 +8,11 @@ from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
-from core.runtime.task_facts import get_agent_holding, get_agent_location, get_object_state_relation
+from core.runtime.world_facts import (
+    WorldFacts,
+    build_world_facts_from_observation,
+    to_observation_world_view,
+)
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -30,7 +34,8 @@ class FinishGuard:
         self._registry = registry or GoalRegistry()
         self._goal_cache: Dict[Tuple[str, int], Tuple[str, GoalSpec]] = {}
 
-    def check(self, obs: ObservationPayload) -> Optional[ActionPayload]:
+    def check(self, obs: ObservationPayload, facts: Optional[WorldFacts] = None) -> Optional[ActionPayload]:
+        facts = facts or build_world_facts_from_observation(obs)
         goal = self._resolve_goal(obs)
         if goal is None:
             return None
@@ -40,7 +45,8 @@ class FinishGuard:
             print(f"[FinishGuard] INVALID_GOAL: {validation.code} issues={validation.issues}")
             return None
 
-        report = self._registry.is_done(obs, goal)
+        # Goal evaluation is fed by a facts-backed view to prevent raw payload reads.
+        report = self._registry.is_done(to_observation_world_view(obs, facts), goal)
         if not report.satisfied:
             return None
 
@@ -109,7 +115,13 @@ class StateStagnationGuard:
     def window(self) -> int:
         return self._window
 
-    def check(self, proposal: ActionPayload, obs: ObservationPayload) -> GuardCheckResult:
+    def check(
+        self,
+        proposal: ActionPayload,
+        obs: ObservationPayload,
+        facts: Optional[WorldFacts] = None,
+    ) -> GuardCheckResult:
+        facts = facts or build_world_facts_from_observation(obs)
         if self._is_watchdog_system_error(proposal):
             return GuardCheckResult(
                 passed=True,
@@ -128,7 +140,7 @@ class StateStagnationGuard:
                 override=None,
             )
 
-        if self._detect_no_state_change(obs):
+        if self._detect_no_state_change(obs, facts):
             message = f"No task-relevant state change for {self._window} steps. Try a different strategy."
             override = make_action(
                 obs,
@@ -163,7 +175,7 @@ class StateStagnationGuard:
         if key in self._key_order:
             self._key_order = deque(x for x in self._key_order if x != key)
 
-    def _detect_no_state_change(self, obs: ObservationPayload) -> bool:
+    def _detect_no_state_change(self, obs: ObservationPayload, facts: WorldFacts) -> bool:
         key = (obs.session_id, int(obs.episode_id))
         step_id = int(obs.step_id)
         self._track_key_for_eviction(key)
@@ -178,20 +190,20 @@ class StateStagnationGuard:
             history = deque(maxlen=self._window)
             self._state_history[key] = history
 
-        history.append(self._state_signature(obs))
+        history.append(self._state_signature(obs, facts))
         if len(history) < self._window:
             return False
         return len(set(history)) == 1
 
-    def _state_signature(self, obs: ObservationPayload) -> str:
+    def _state_signature(self, obs: ObservationPayload, facts: WorldFacts) -> str:
         episode_id = int(obs.episode_id)
-        location = get_agent_location(obs)
-        holding = get_agent_holding(obs)
+        location = facts.agent.location
+        holding = facts.agent.holding
 
-        red_cube_state, red_cube_rel = self._object_state_and_relation(obs, episode_id, "red_cube")
-        door_state, _ = self._object_state_and_relation(obs, episode_id, "fridge_door")
-        left_state, _ = self._object_state_and_relation(obs, episode_id, "half_cube_left")
-        right_state, _ = self._object_state_and_relation(obs, episode_id, "half_cube_right")
+        red_cube_state, red_cube_rel = self._object_state_and_relation(facts, obs, episode_id, "red_cube")
+        door_state, _ = self._object_state_and_relation(facts, obs, episode_id, "fridge_door")
+        left_state, _ = self._object_state_and_relation(facts, obs, episode_id, "half_cube_left")
+        right_state, _ = self._object_state_and_relation(facts, obs, episode_id, "half_cube_right")
         task_key = self._task_signature_key(obs)
 
         return "|".join(
@@ -214,10 +226,14 @@ class StateStagnationGuard:
         return action_type == "THINK" and "[SYSTEM ERROR]" in content
 
     def _object_state_and_relation(
-        self, obs: ObservationPayload, episode_id: int, item_id: str
+        self,
+        facts: WorldFacts,
+        obs: ObservationPayload,
+        episode_id: int,
+        item_id: str,
     ) -> Tuple[str, str]:
         cache_key = (obs.session_id, episode_id, item_id)
-        state, relation = get_object_state_relation(obs, item_id)
+        state, relation = facts.get_object_state_relation(item_id)
         if state != "MISSING" or relation:
             result = (state, relation)
             self._last_known_object_state[cache_key] = result

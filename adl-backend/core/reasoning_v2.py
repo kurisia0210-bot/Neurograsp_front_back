@@ -23,6 +23,7 @@ from typing import Optional
 from core.pipeline.adapters_v2 import InstructAdapter
 from core.pipeline.common_v2 import make_action
 from core.pipeline.complex_actions_v2 import ComplexActionPlanner
+from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
 from core.safety.guards_v2 import (
     FinishGuard,
     GuardCheckResult,
@@ -69,11 +70,18 @@ class ReasoningV2Pipeline:
             )
             self._macro_planner_mode = "auto"
 
-    async def propose(self, obs: ObservationPayload) -> ActionPayload:
-        return await self._proposer.propose(obs)
+    async def propose(self, obs: ObservationPayload, facts: Optional[WorldFacts] = None) -> ActionPayload:
+        facts = facts or build_world_facts_from_observation(obs)
+        return await self._proposer.propose(obs, facts)
 
-    async def guard_check(self, proposal: ActionPayload, obs: ObservationPayload) -> GuardCheckResult:
-        return self._state_guard.check(proposal, obs)
+    async def guard_check(
+        self,
+        proposal: ActionPayload,
+        obs: ObservationPayload,
+        facts: Optional[WorldFacts] = None,
+    ) -> GuardCheckResult:
+        facts = facts or build_world_facts_from_observation(obs)
+        return self._state_guard.check(proposal, obs, facts)
 
     async def actuation_route(self, check: GuardCheckResult, obs: ObservationPayload) -> ActionPayload:
         routed = check.override if check.override is not None else check.proposal
@@ -92,15 +100,17 @@ class ReasoningV2Pipeline:
         return True
 
     @staticmethod
-    def _debounce_redundant_move(proposal: ActionPayload, obs: ObservationPayload) -> ActionPayload:
+    def _debounce_redundant_move(
+        proposal: ActionPayload,
+        obs: ObservationPayload,
+        facts: WorldFacts,
+    ) -> ActionPayload:
         action_type = proposal.type.value if hasattr(proposal.type, "value") else proposal.type
         if action_type != "MOVE_TO":
             return proposal
 
         target_poi = proposal.target_poi.value if hasattr(proposal.target_poi, "value") else proposal.target_poi
-        current_location = (
-            obs.agent.location.value if hasattr(obs.agent.location, "value") else obs.agent.location
-        )
+        current_location = facts.agent.location
         if target_poi and current_location and target_poi == current_location:
             return make_action(
                 obs,
@@ -111,7 +121,10 @@ class ReasoningV2Pipeline:
 
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
         print(f"[DEBUG ReasoningV2] analyze_and_propose: goal_spec={obs.goal_spec}")
-        finish_action = self._finish_guard.check(obs)
+        facts = build_world_facts_from_observation(obs)
+
+        # Build facts once per tick and share across all v2 stages.
+        finish_action = self._finish_guard.check(obs, facts)
         if finish_action is not None:
             if obs.episode_id is not None:
                 self._finish_guard.reset(obs.session_id, int(obs.episode_id))
@@ -121,11 +134,11 @@ class ReasoningV2Pipeline:
 
         proposal = None
         if self._should_use_complex_planner():
-            proposal = self._complex_action_planner.next_atomic(obs)
+            proposal = self._complex_action_planner.next_atomic(obs, facts)
         if proposal is None:
-            proposal = await self.propose(obs)
-        proposal = self._debounce_redundant_move(proposal, obs)
-        check = await self.guard_check(proposal, obs)
+            proposal = await self.propose(obs, facts)
+        proposal = self._debounce_redundant_move(proposal, obs, facts)
+        check = await self.guard_check(proposal, obs, facts)
         action = await self.actuation_route(check, obs)
         if self._is_finish_action(action) and obs.episode_id is not None:
             self._finish_guard.reset(obs.session_id, int(obs.episode_id))

@@ -6,6 +6,7 @@ from typing import Deque, Dict, Optional, Tuple
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
+from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -40,7 +41,12 @@ class ComplexActionPlanner:
         self._registry = registry or GoalRegistry()
         self._plans: Dict[Tuple[str, int], _PlanState] = {}
 
-    def next_atomic(self, obs: ObservationPayload) -> Optional[ActionPayload]:
+    def next_atomic(
+        self,
+        obs: ObservationPayload,
+        facts: Optional[WorldFacts] = None,
+    ) -> Optional[ActionPayload]:
+        facts = facts or build_world_facts_from_observation(obs)
         if obs.episode_id is None:
             return None
 
@@ -57,13 +63,13 @@ class ComplexActionPlanner:
         signature = self._goal_signature(obs, goal)
         state = self._plans.get(key)
         if state is None or state.signature != signature:
-            state = self._build_plan_state(goal, obs, signature)
+            state = self._build_plan_state(goal, facts, signature)
             if state is None:
                 self._plans.pop(key, None)
                 return None
             self._plans[key] = state
 
-        self._consume_completed_steps(state, obs)
+        self._consume_completed_steps(state, facts)
         if not state.steps:
             return None
 
@@ -87,7 +93,7 @@ class ComplexActionPlanner:
     def reset(self, session_id: str, episode_id: int) -> None:
         self._plans.pop((session_id, int(episode_id)), None)
 
-    def _build_plan_state(self, goal: GoalSpec, obs: ObservationPayload, signature: str) -> Optional[_PlanState]:
+    def _build_plan_state(self, goal: GoalSpec, facts: WorldFacts, signature: str) -> Optional[_PlanState]:
         if goal.goal_type == "PUT_IN":
             # PUT_IN short-circuit disabled: delegate to proposer/LLM.
             return None
@@ -95,7 +101,7 @@ class ComplexActionPlanner:
         if goal.goal_type == "OPEN_THEN_PUT_IN":
             steps = deque(self._plan_open_then_put_in(goal))
             state = _PlanState(signature=signature, steps=steps)
-            self._consume_completed_steps(state, obs)
+            self._consume_completed_steps(state, facts)
             return state
 
         return None
@@ -169,24 +175,24 @@ class ComplexActionPlanner:
             ),
         ]
 
-    def _consume_completed_steps(self, state: _PlanState, obs: ObservationPayload) -> None:
-        while state.steps and self._is_step_done(state.steps[0], obs):
+    def _consume_completed_steps(self, state: _PlanState, facts: WorldFacts) -> None:
+        while state.steps and self._is_step_done(state.steps[0], facts):
             state.steps.popleft()
 
-    def _is_step_done(self, step: AtomicActionSpec, obs: ObservationPayload) -> bool:
+    def _is_step_done(self, step: AtomicActionSpec, facts: WorldFacts) -> bool:
         if step.done_kind == "none":
             return False
 
         if step.done_kind == "holding":
-            holding = obs.agent.holding.value if hasattr(obs.agent.holding, "value") else obs.agent.holding
+            holding = facts.agent.holding
             return holding == step.done_item
 
         if step.done_kind == "open":
-            state, _ = self._object_state_and_relation(obs, step.done_item or "")
+            state, _ = self._object_state_and_relation(facts, step.done_item or "")
             return state == "open"
 
         if step.done_kind == "inside":
-            state, relation = self._object_state_and_relation(obs, step.done_item or "")
+            state, relation = self._object_state_and_relation(facts, step.done_item or "")
             container = step.done_container or ""
             if container == "fridge_main" and state == "in_fridge":
                 return True
@@ -204,14 +210,8 @@ class ComplexActionPlanner:
         return f"{goal.goal_id}|task={(obs.global_task or '').strip().lower()}"
 
     @staticmethod
-    def _object_state_and_relation(obs: ObservationPayload, item_id: str) -> tuple[str, str]:
-        for obj in obs.nearby_objects:
-            oid = obj.id.value if hasattr(obj.id, "value") else obj.id
-            if oid == item_id:
-                state = obj.state.value if hasattr(obj.state, "value") else obj.state
-                relation = (obj.relation or "").strip().lower()
-                return str(state), relation
-        return "MISSING", ""
+    def _object_state_and_relation(facts: WorldFacts, item_id: str) -> tuple[str, str]:
+        return facts.get_object_state_relation(item_id)
 
 
 __all__ = ["AtomicActionSpec", "ComplexActionPlanner"]

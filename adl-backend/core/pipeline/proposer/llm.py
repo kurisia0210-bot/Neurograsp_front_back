@@ -4,6 +4,7 @@ from typing import Optional
 
 from core.pipeline.proposer.prompt_builder import LLMProposerPromptBuilder
 from core.pipeline.proposer.response_parser import LLMProposerResponseParser
+from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
 from service.llm_client import get_completion
 from schema.payload import ActionPayload, ObservationPayload
 
@@ -55,7 +56,7 @@ class LLMProposer:
         self._prompt_builder = LLMProposerPromptBuilder(system_prompt=system_prompt)
         self._response_parser = LLMProposerResponseParser()
 
-    async def propose(self, obs: ObservationPayload) -> ActionPayload:
+    async def propose(self, obs: ObservationPayload, facts: Optional[WorldFacts] = None) -> ActionPayload:
         """
         根据观察数据生成下一个动作提案。
         
@@ -71,9 +72,10 @@ class LLMProposer:
         返回：
         - ActionPayload: 解析后的动作，如果解析失败则返回THINK动作
         """
+        facts = facts or build_world_facts_from_observation(obs)
         print(f"[DEBUG LLMProposer] propose: goal_spec={obs.goal_spec}")
         # 步骤1：构建LLM提示词
-        messages = self._prompt_builder.build_messages(obs)
+        messages = self._prompt_builder.build_messages(obs, facts)
         
         # 步骤2：调用LLM服务
         raw = await get_completion(messages, model=self._model, temperature=self._temperature)

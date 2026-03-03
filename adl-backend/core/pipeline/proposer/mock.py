@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry
+from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -55,14 +56,13 @@ class MockProposer:
             print(f"[ReasoningV2] Invalid mock script action at idx={index}: {exc}")
             return None
 
-    def _find_state(self, obs: ObservationPayload, item_id: str) -> Optional[str]:
-        for obj in obs.nearby_objects:
-            obj_id = obj.id.value if hasattr(obj.id, "value") else obj.id
-            if obj_id == item_id:
-                return obj.state.value if hasattr(obj.state, "value") else obj.state
-        return None
+    def _find_state(self, facts: WorldFacts, item_id: str) -> Optional[str]:
+        obj = facts.get_object(item_id)
+        if obj is None:
+            return None
+        return obj.state
 
-    def _from_rules(self, obs: ObservationPayload) -> ActionPayload:
+    def _from_rules(self, obs: ObservationPayload, facts: WorldFacts) -> ActionPayload:
         goal = self._goal_registry.resolve_with_hint(obs.global_task, getattr(obs, "goal_spec", None))
         if goal is not None and goal.goal_type == "MOVE_TO":
             poi = goal.params.get("poi")
@@ -144,12 +144,12 @@ class MockProposer:
                 ),
             )
 
-        if self._find_state(obs, "red_cube") == "in_fridge":
+        if self._find_state(facts, "red_cube") == "in_fridge":
             return make_action(obs, type="THINK", content="MockRule: waiting for FinishGuard.")
 
-        holding = obs.agent.holding.value if hasattr(obs.agent.holding, "value") else obs.agent.holding
-        fridge_door_state = self._find_state(obs, "fridge_door")
-        red_cube_state = self._find_state(obs, "red_cube")
+        holding = facts.agent.holding
+        fridge_door_state = self._find_state(facts, "fridge_door")
+        red_cube_state = self._find_state(facts, "red_cube")
 
         if holding is None and red_cube_state == "on_table":
             return make_action(
@@ -204,9 +204,10 @@ class MockProposer:
         text = (task or "").strip().lower()
         return bool(re.search(r"(?:^|\b)(?:place|put)\b", text))
 
-    async def propose(self, obs: ObservationPayload) -> ActionPayload:
+    async def propose(self, obs: ObservationPayload, facts: Optional[WorldFacts] = None) -> ActionPayload:
+        facts = facts or build_world_facts_from_observation(obs)
         scripted = self._from_script(obs)
         if scripted is not None:
             return scripted
-        return self._from_rules(obs)
+        return self._from_rules(obs, facts)
 

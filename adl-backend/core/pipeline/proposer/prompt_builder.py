@@ -4,7 +4,7 @@ import json
 import re
 from typing import Dict, List, Optional
 
-from core.runtime.task_facts import normalize_task_facts
+from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
 from schema.payload import ObservationPayload
 
 
@@ -133,31 +133,35 @@ class LLMProposerPromptBuilder:
         return f"last_action=({action_text}); last_result=({result_text})"
 
     @staticmethod
-    def _build_task_facts_input(obs: ObservationPayload) -> str:
-        facts = normalize_task_facts(obs)
+    def _build_task_facts_input(facts: WorldFacts) -> str:
+        # Keep prompt payload stable and deterministic for LLM reproducibility.
+        fact_dict = facts.to_dict()
         return "task_facts=" + json.dumps(
-            facts,
+            fact_dict,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
         )
 
-    def build_messages(self, obs: ObservationPayload) -> List[Dict[str, str]]:
+    def build_messages(
+        self,
+        obs: ObservationPayload,
+        facts: Optional[WorldFacts] = None,
+    ) -> List[Dict[str, str]]:
         """Assemble final `[system, user]` message list for LLM completion."""
+        facts = facts or build_world_facts_from_observation(obs)
         nearby_parts: List[str] = []
-        for obj in obs.nearby_objects:
-            obj_id = self._enum_value(obj.id)
-            obj_state = self._enum_value(obj.state)
+        for obj in facts.objects:
             relation = f", relation={obj.relation}" if obj.relation else ""
-            nearby_parts.append(f"{obj_id}(state={obj_state}{relation})")
+            nearby_parts.append(f"{obj.item_id}(state={obj.state}{relation})")
         nearby_text = "; ".join(nearby_parts) if nearby_parts else "none"
 
-        holding = self._enum_value(obs.agent.holding)
-        location = self._enum_value(obs.agent.location)
+        holding = self._enum_value(facts.agent.holding)
+        location = self._enum_value(facts.agent.location)
 
         goal_input = self._build_goal_input(obs)
         last_step_input = self._build_last_step_input(obs)
-        task_facts_input = self._build_task_facts_input(obs)
+        task_facts_input = self._build_task_facts_input(facts)
 
         user_prompt = (
             f"{goal_input}\n"
