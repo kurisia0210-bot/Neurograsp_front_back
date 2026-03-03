@@ -6,7 +6,7 @@ from core.runtime.task_facts import (
     normalize_task_facts,
     summarize_task_facts,
 )
-from core.runtime.world_facts import (
+from core.world_facts import (
     WORLD_FACTS_VERSION,
     FactsProvider,
     ObservationFactsProvider,

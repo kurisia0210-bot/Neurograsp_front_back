@@ -135,6 +135,8 @@ export function AgentPlayground({ onBack }) {
   const [behaviorLine, setBehaviorLine] = useState('Action: waiting for next step')
   const [showArrowAnimation, setShowArrowAnimation] = useState(false)
   const [intentHistory, setIntentHistory] = useState([])
+  const [worldFactsInitialSnapshot, setWorldFactsInitialSnapshot] = useState(null)
+  const [worldFactsReadSnapshot, setWorldFactsReadSnapshot] = useState(null)
   const [actionBubble, setActionBubble] = useState({
     visible: false,
     status: 'NO_INTENT',
@@ -142,9 +144,32 @@ export function AgentPlayground({ onBack }) {
   })
   const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
 
-  const triggerArrowAnimation = () => {
+  const flashActionArrow = () => {
     setShowArrowAnimation(true)
     setTimeout(() => setShowArrowAnimation(false), 1500)
+  }
+
+  const handleTestReadWorldFacts = () => {
+    try {
+      const currentSnapshot = worldStateManager.getWorldFacts()
+      const initialSnapshot = worldStateManager.getInitialWorldFacts()
+      setWorldFactsReadSnapshot(currentSnapshot)
+      setWorldFactsInitialSnapshot(initialSnapshot)
+      setBehaviorLine('Action: test read world facts')
+      setActionBubble({
+        visible: true,
+        status: 'SUCCESS',
+        message: `Read world facts ok (${currentSnapshot?.nearby_objects?.length || 0} facts)`
+      })
+      console.log('[AgentPlayground] World facts current snapshot:', currentSnapshot)
+      console.log('[AgentPlayground] World facts initial snapshot:', initialSnapshot)
+    } catch (error) {
+      setActionBubble({
+        visible: true,
+        status: 'READ_FAILED',
+        message: `Read world facts failed: ${error?.message || String(error)}`
+      })
+    }
   }
 
   const agentSystem = useAgentSystem({
@@ -171,7 +196,7 @@ export function AgentPlayground({ onBack }) {
     onActionExecuted: (action, newState) => {
       console.log('[AgentPlayground] Action executed:', action?.type, newState)
       if (action?.type === 'MOVE_TO' || action?.type === 'INTERACT') {
-        triggerArrowAnimation()
+        flashActionArrow()
       }
     },
     getWorldFacts: worldStateManager.getWorldFacts,
@@ -223,6 +248,8 @@ export function AgentPlayground({ onBack }) {
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
     setIntentHistory([])
+    setWorldFactsInitialSnapshot(null)
+    setWorldFactsReadSnapshot(null)
     setBehaviorLine('Action: waiting for next step')
     setAgentVisualPosition(getVisualTargetPosition('table_center'))
     resetActionBubble()
@@ -277,7 +304,7 @@ export function AgentPlayground({ onBack }) {
         onTick={agentSystem.tick}
         onToggleAutoLoop={agentSystem.toggleAutoLoop}
         onReset={handleResetAgent}
-        onTestArrow={triggerArrowAnimation}
+        onTestReadWorldFacts={handleTestReadWorldFacts}
         isThinking={agentSystem.isThinking}
         autoLoop={agentSystem.autoLoop}
         userInstruction={agentSystem.userInstruction}
@@ -432,6 +459,38 @@ export function AgentPlayground({ onBack }) {
         autoLoop={agentSystem.autoLoop}
         lastAction={agentSystem.lastAction}
       />
+
+      <div className="absolute top-32 right-4 z-50 w-[30rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-cyan-300">World Facts Read Test</div>
+          <button
+            onClick={handleTestReadWorldFacts}
+            className="px-2 py-0.5 text-[10px] bg-cyan-700 rounded hover:bg-cyan-600 transition-colors"
+          >
+            Read
+          </button>
+        </div>
+        <div className="overflow-y-auto max-h-52">
+          {!worldFactsReadSnapshot && !worldFactsInitialSnapshot ? (
+            <div className="text-gray-500">No read yet. Click "Read".</div>
+          ) : (
+            <div className="space-y-2">
+              <div>
+                <div className="text-[10px] text-cyan-200 mb-1">Initial Snapshot</div>
+                <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
+{JSON.stringify(worldFactsInitialSnapshot, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <div className="text-[10px] text-emerald-200 mb-1">Current Snapshot</div>
+                <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
+{JSON.stringify(worldFactsReadSnapshot, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="absolute bottom-4 left-4 z-50 w-[28rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
         <div className="flex items-center justify-between mb-2">

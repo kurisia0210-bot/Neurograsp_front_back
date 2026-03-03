@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry
-from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
+from core.world_facts import WorldFacts, build_world_facts_from_observation
 from schema.payload import ActionPayload, ObservationPayload
 
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
 import { normalizeBackendIntent } from './ActionContract'
@@ -25,6 +25,14 @@ function normalizeWorldSnapshot(rawWorldState) {
       location: worldAgent.location || 'table_center',
       holding: Object.prototype.hasOwnProperty.call(worldAgent, 'holding') ? worldAgent.holding : null
     }
+  }
+}
+
+function normalizeExecutionResult(worldResult) {
+  return {
+    success: Boolean(worldResult?.success),
+    failure_type: worldResult?.failure_type || null,
+    failure_reason: worldResult?.failure_reason || ''
   }
 }
 
@@ -65,11 +73,11 @@ export function useAgentSystem({
     return normalizeWorldSnapshot(rawWorldState)
   }, [getWorldFacts, getWorldState])
 
-  const buildCommittedAction = useCallback((action) => {
+  const buildCommittedAction = useCallback((action, stepId = stepCounterRef.current) => {
     return {
       session_id: sessionIdRef.current,
       episode_id: episodeIdRef.current,
-      step_id: stepCounterRef.current,
+      step_id: stepId,
       ...action
     }
   }, [])
@@ -84,7 +92,6 @@ export function useAgentSystem({
     const parsedGoalSpec = typeof goalResolver === 'function'
       ? goalResolver(userInstruction, worldAgent, worldState)
       : null
-
     const goalSpec = worldState.goal_spec || parsedGoalSpec || null
 
     return {
@@ -129,6 +136,7 @@ export function useAgentSystem({
         executionResult
       }
     }
+
     const normalizedAction = resolved.intent
     const resolvedActionKey = resolved.actionKey
     const beforeSnapshot = readWorldSnapshot()
@@ -138,6 +146,31 @@ export function useAgentSystem({
       success: true,
       failure_type: null,
       failure_reason: ''
+    }
+    let afterAgent = beforeAgent
+
+    const runWorldExecution = () => {
+      if (typeof executeWorldAction !== 'function') {
+        return {
+          result: {
+            success: false,
+            failure_type: 'EXECUTOR_MISSING',
+            failure_reason: 'executeWorldAction is not configured'
+          },
+          nextAgent: beforeAgent
+        }
+      }
+
+      const worldResult = executeWorldAction(normalizedAction) || {}
+      const normalizedResult = normalizeExecutionResult(worldResult)
+      const nextAgent = worldResult?.next_agent_state
+        ? normalizeWorldSnapshot({ agent: worldResult.next_agent_state }).agent
+        : readWorldSnapshot().agent
+
+      return {
+        result: normalizedResult,
+        nextAgent
+      }
     }
 
     switch (normalizedAction.type) {
@@ -150,38 +183,16 @@ export function useAgentSystem({
           }
           break
         }
-        if (typeof executeWorldAction !== 'function') {
-          executionResult = {
-            success: false,
-            failure_type: 'EXECUTOR_MISSING',
-            failure_reason: 'executeWorldAction is not configured'
-          }
-          break
-        }
-        const worldResult = executeWorldAction(normalizedAction) || {}
-        executionResult = {
-          success: Boolean(worldResult.success),
-          failure_type: worldResult.failure_type || null,
-          failure_reason: worldResult.failure_reason || ''
-        }
+        const worldExecution = runWorldExecution()
+        executionResult = worldExecution.result
+        afterAgent = worldExecution.nextAgent
         break
       }
 
       case 'INTERACT': {
-        if (typeof executeWorldAction !== 'function') {
-          executionResult = {
-            success: false,
-            failure_type: 'EXECUTOR_MISSING',
-            failure_reason: 'executeWorldAction is not configured'
-          }
-          break
-        }
-        const worldResult = executeWorldAction(normalizedAction) || {}
-        executionResult = {
-          success: Boolean(worldResult.success),
-          failure_type: worldResult.failure_type || null,
-          failure_reason: worldResult.failure_reason || ''
-        }
+        const worldExecution = runWorldExecution()
+        executionResult = worldExecution.result
+        afterAgent = worldExecution.nextAgent
         effects.push({
           key: `interact.${String(resolvedActionKey || normalizedAction.interaction_type || 'none').toLowerCase()}`,
           before: normalizedAction.target_item || normalizedAction.target_poi || '',
@@ -205,9 +216,6 @@ export function useAgentSystem({
           failure_reason: `Unknown action type: ${normalizedAction.type}`
         }
     }
-
-    const afterSnapshot = readWorldSnapshot()
-    const afterAgent = afterSnapshot.agent
 
     if ((beforeAgent.location || '') !== (afterAgent.location || '')) {
       effects.push({
@@ -240,7 +248,15 @@ export function useAgentSystem({
   }, [executeWorldAction, onActionExecuted, readWorldSnapshot])
 
   const dispatchIntent = useCallback((actionPayload, options = {}) => {
-    const { resultOverride = null } = options
+    const {
+      resultOverride = null,
+      allocateStepId = true
+    } = options
+
+    if (allocateStepId) {
+      stepCounterRef.current += 1
+    }
+
     const applied = executeAction(actionPayload)
     const committedAction = buildCommittedAction(applied.action)
     const committedResult = resultOverride || applied.executionResult
@@ -252,10 +268,6 @@ export function useAgentSystem({
       agentState: applied.agentState
     }
   }, [executeAction, buildCommittedAction])
-
-  const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
-    return dispatchIntent(actionPayload, { resultOverride })
-  }, [dispatchIntent])
 
   const tick = useCallback(async () => {
     if (isThinking) return
@@ -275,11 +287,13 @@ export function useAgentSystem({
 
       const data = await response.json()
       setLastError(data.error || null)
+
       if (typeof data.episode_id === 'number') {
         episodeIdRef.current = data.episode_id
       } else if (typeof data.intent?.episode_id === 'number') {
         episodeIdRef.current = data.intent.episode_id
       }
+
       const normalizedIntent = normalizeBackendIntent(data.intent)
       const committedIntent = buildCommittedAction(normalizedIntent)
 
@@ -294,7 +308,7 @@ export function useAgentSystem({
       const canExecute = !isBlocked && Boolean(adjudicationResult.success)
 
       if (canExecute) {
-        const applied = dispatchIntent(normalizedIntent)
+        const applied = dispatchIntent(normalizedIntent, { allocateStepId: false })
         const responseWithExecution = {
           ...data,
           intent: applied.action,
@@ -399,13 +413,7 @@ export function useAgentSystem({
     return () => clearInterval(interval)
   }, [autoLoop, tick])
 
-  const startAutoLoop = () => setAutoLoop(true)
-  const stopAutoLoop = () => setAutoLoop(false)
   const toggleAutoLoop = () => setAutoLoop((prev) => !prev)
-
-  const updateTask = (newTask) => {
-    setUserInstruction(newTask)
-  }
 
   const resetAgent = () => {
     setLastAction(null)
@@ -414,6 +422,7 @@ export function useAgentSystem({
     setLastError(null)
     setLastObservation(null)
     setLastResponse(null)
+    setAutoLoop(false)
 
     episodeIdRef.current = null
     stepCounterRef.current = 0
@@ -437,38 +446,9 @@ export function useAgentSystem({
     stepId: stepCounterRef.current,
 
     tick,
-    startAutoLoop,
-    stopAutoLoop,
     toggleAutoLoop,
-    updateTask,
     resetAgent,
-
     setUserInstruction,
-
-    perceiveWorld,
-    executeAction,
-    commitManualAction,
     dispatchIntent
   }
-}
-
-export function AgentSystemProvider({ children, config }) {
-  const agentSystem = useAgentSystem(config)
-
-  return (
-    <AgentSystemContext.Provider value={agentSystem}>
-      {children}
-    </AgentSystemContext.Provider>
-  )
-}
-
-import { createContext, useContext } from 'react'
-const AgentSystemContext = createContext(null)
-
-export function useAgentSystemContext() {
-  const context = useContext(AgentSystemContext)
-  if (!context) {
-    throw new Error('useAgentSystemContext must be used within AgentSystemProvider')
-  }
-  return context
 }

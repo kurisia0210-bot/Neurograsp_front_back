@@ -4,7 +4,7 @@ import json
 import re
 from typing import Dict, List, Optional
 
-from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
+from core.world_facts import WorldFacts, build_world_facts_from_observation
 from schema.payload import ObservationPayload
 
 

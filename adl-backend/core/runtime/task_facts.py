@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from core.runtime.world_facts import (
+from core.world_facts import (
     build_task_facts_dict,
     build_world_facts_from_observation,
     summarize_world_facts,

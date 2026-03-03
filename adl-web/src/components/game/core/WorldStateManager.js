@@ -1,5 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { buildWorldFacts, isPositionTriplet } from './worldFacts'
+import {
+  createWorldFactsTable,
+  writeWorldFacts,
+  readWorldFacts,
+  readInitialWorldFacts,
+  isPositionTriplet
+} from './worldFacts'
 import { normalizeBackendIntent } from './ActionContract'
 
 const DOOR_OPEN_ANGLE = 2.0
@@ -41,12 +47,23 @@ export function useWorldStateManager(options = {}) {
     ]
   } = options
 
-  const [agentState, setAgentState] = useState(() => normalizeAgentState(initialAgentState, initialCubes))
+  const initialNormalizedAgentState = normalizeAgentState(initialAgentState, initialCubes)
+  const [agentState, setAgentState] = useState(() => initialNormalizedAgentState)
   const [fridgeOpen, setFridgeOpen] = useState(initialFridgeOpen)
   const [fridgeDoorAngle, setFridgeDoorAngle] = useState(initialFridgeOpen ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE)
   const [cubes, setCubes] = useState(initialCubes)
 
   const doorAnimTimerRef = useRef(null)
+  const worldFactsTableRef = useRef(null)
+  if (!worldFactsTableRef.current) {
+    const initialTable = createWorldFactsTable()
+    writeWorldFacts(initialTable, {
+      agentState: initialNormalizedAgentState,
+      cubes: initialCubes,
+      fridgeOpen: initialFridgeOpen
+    })
+    worldFactsTableRef.current = initialTable
+  }
 
   const stopDoorAnimation = useCallback(() => {
     if (doorAnimTimerRef.current) {
@@ -311,12 +328,17 @@ export function useWorldStateManager(options = {}) {
 
   const getWorldFacts = useCallback((customAgentState = null) => {
     const resolvedAgentState = normalizeAgentState(customAgentState || agentState, cubes)
-    return buildWorldFacts({
+    writeWorldFacts(worldFactsTableRef.current, {
       agentState: resolvedAgentState,
       cubes,
       fridgeOpen
     })
+    return readWorldFacts(worldFactsTableRef.current)
   }, [agentState, cubes, fridgeOpen])
+
+  const getInitialWorldFacts = useCallback(() => {
+    return readInitialWorldFacts(worldFactsTableRef.current)
+  }, [])
 
   // Backward-compatible alias: existing callers still use getWorldState.
   const getWorldState = useCallback((customAgentState = null) => {
@@ -325,9 +347,17 @@ export function useWorldStateManager(options = {}) {
 
   const resetWorldState = useCallback(() => {
     stopDoorAnimation()
+    const nextInitialAgent = normalizeAgentState(initialAgentState, initialCubes)
+    const nextInitialTable = createWorldFactsTable()
+    writeWorldFacts(nextInitialTable, {
+      agentState: nextInitialAgent,
+      cubes: initialCubes,
+      fridgeOpen: initialFridgeOpen
+    })
+    worldFactsTableRef.current = nextInitialTable
     setFridgeOpen(initialFridgeOpen)
     setFridgeDoorAngle(initialFridgeOpen ? DOOR_OPEN_ANGLE : DOOR_CLOSED_ANGLE)
-    setAgentState(normalizeAgentState(initialAgentState, initialCubes))
+    setAgentState(nextInitialAgent)
     setCubes(initialCubes)
     console.log('World state reset')
   }, [initialFridgeOpen, initialAgentState, initialCubes, stopDoorAnimation])
@@ -349,6 +379,7 @@ export function useWorldStateManager(options = {}) {
     executeWorldAction,
     getWorldState,
     getWorldFacts,
+    getInitialWorldFacts,
     resetWorldState,
 
     getHoldingCube

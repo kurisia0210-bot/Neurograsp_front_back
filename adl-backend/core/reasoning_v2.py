@@ -23,7 +23,7 @@ from typing import Optional
 from core.pipeline.adapters_v2 import InstructAdapter
 from core.pipeline.common_v2 import make_action
 from core.pipeline.complex_actions_v2 import ComplexActionPlanner
-from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
+from core.world_facts import WorldFacts, build_world_facts_from_observation
 from core.safety.guards_v2 import (
     FinishGuard,
     GuardCheckResult,

@@ -4,7 +4,7 @@ from typing import Optional
 
 from core.pipeline.proposer.prompt_builder import LLMProposerPromptBuilder
 from core.pipeline.proposer.response_parser import LLMProposerResponseParser
-from core.runtime.world_facts import WorldFacts, build_world_facts_from_observation
+from core.world_facts import WorldFacts, build_world_facts_from_observation
 from service.llm_client import get_completion
 from schema.payload import ActionPayload, ObservationPayload
 

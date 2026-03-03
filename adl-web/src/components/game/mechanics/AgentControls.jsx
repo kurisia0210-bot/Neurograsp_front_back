@@ -14,10 +14,10 @@ import React from 'react'
  * @param {boolean} props.autoLoop - 是否自动循环
  * @param {string} props.userInstruction - 用户指令
  * @param {function} props.setUserInstruction - 设置用户指令回调
- * @param {function} props.onTestArrow - 测试箭头动画回调（可选）
+ * @param {function} props.onTestReadWorldFacts - 测试读取 world facts 回调（可选）
  * @param {string} props.className - 自定义类名
  */
-export function AgentControls({ 
+export function AgentControls({
   onTick,
   onToggleAutoLoop,
   onReset,
@@ -25,7 +25,7 @@ export function AgentControls({
   autoLoop,
   userInstruction,
   setUserInstruction,
-  onTestArrow,
+  onTestReadWorldFacts,
   className = ""
 }) {
   return (
@@ -40,31 +40,31 @@ export function AgentControls({
         />
       </div>
       <div className="flex gap-4 justify-center">
-        <button 
-          onClick={onTick} 
-          disabled={isThinking || autoLoop} 
+        <button
+          onClick={onTick}
+          disabled={isThinking || autoLoop}
           className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow-lg disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
           STEP
         </button>
-        <button 
-          onClick={onToggleAutoLoop} 
+        <button
+          onClick={onToggleAutoLoop}
           className={`px-6 py-2 font-bold rounded text-white shadow-lg transition-colors ${autoLoop ? 'bg-red-600 animate-pulse hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
         >
           {autoLoop ? "STOP" : "AUTO"}
         </button>
-        <button 
+        <button
           onClick={onReset}
           className="px-6 py-2 bg-gray-600 text-white font-bold rounded shadow-lg hover:bg-gray-700 transition-colors"
         >
           RESET
         </button>
-        {onTestArrow && (
-          <button 
-            onClick={onTestArrow}
+        {onTestReadWorldFacts && (
+          <button
+            onClick={onTestReadWorldFacts}
             className="px-6 py-2 bg-purple-600 text-white font-bold rounded shadow-lg hover:bg-purple-700 transition-colors"
           >
-            测试箭头
+            测试事实读取
           </button>
         )}
       </div>
@@ -79,14 +79,14 @@ export function AgentControls({
  * @param {string} props.label - 按钮标签
  * @param {string} props.className - 自定义类名
  */
-export function BackButton({ 
-  onBack, 
+export function BackButton({
+  onBack,
   label = "返回主页面",
   className = ""
 }) {
   return (
-    <button 
-      onClick={onBack} 
+    <button
+      onClick={onBack}
       className={`absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur text-gray-700 rounded-full shadow-sm hover:bg-gray-100 font-bold transition-all ${className}`}
     >
       <span>⬅️</span> {label}
@@ -105,7 +105,7 @@ export function BackButton({
  * @param {boolean} props.disabled - 是否禁用
  * @param {string} props.className - 自定义类名
  */
-export function TaskInput({ 
+export function TaskInput({
   value,
   onChange,
   onSubmit,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
-from core.runtime.world_facts import WorldFacts
+from core.world_facts import WorldFacts
 from schema.payload import ActionPayload, ObservationPayload
 
 

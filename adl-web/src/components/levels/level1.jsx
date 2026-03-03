@@ -143,61 +143,69 @@ export function Level1({ onBack }) {
 
   const executeWorldAction = useCallback(
     (actionPayload) => {
+      const withNextAgentState = (result, nextCubeState = cubeState) => ({
+        ...result,
+        next_agent_state: {
+          location: 'table_center',
+          holding: nextCubeState === 'in_hand' ? 'red_cube' : null
+        }
+      })
+
       const interactionType = String(actionPayload.interaction_type || 'NONE').toUpperCase()
       const targetItem = actionPayload.target_item
 
       if (interactionType === 'PICK') {
         if (targetItem !== 'red_cube' || cubeState !== 'on_table') {
-          return { success: false, failure_reason: 'PICK precondition failed' }
+          return withNextAgentState({ success: false, failure_reason: 'PICK precondition failed' })
         }
         setCubeState('in_hand')
-        return { success: true }
+        return withNextAgentState({ success: true }, 'in_hand')
       }
 
       if (interactionType === 'OPEN') {
         if (targetItem !== 'fridge_door') {
-          return { success: false, failure_reason: 'OPEN unsupported target' }
+          return withNextAgentState({ success: false, failure_reason: 'OPEN unsupported target' })
         }
         if (fridgeDoorOpen) {
-          return { success: false, failure_reason: 'OPEN precondition failed: already open' }
+          return withNextAgentState({ success: false, failure_reason: 'OPEN precondition failed: already open' })
         }
         setFridgeDoorOpen(true)
-        return { success: true }
+        return withNextAgentState({ success: true })
       }
 
       if (interactionType === 'CLOSE') {
         if (targetItem !== 'fridge_door') {
-          return { success: false, failure_reason: 'CLOSE unsupported target' }
+          return withNextAgentState({ success: false, failure_reason: 'CLOSE unsupported target' })
         }
         if (!fridgeDoorOpen) {
-          return { success: false, failure_reason: 'CLOSE precondition failed: already closed' }
+          return withNextAgentState({ success: false, failure_reason: 'CLOSE precondition failed: already closed' })
         }
         setFridgeDoorOpen(false)
-        return { success: true }
+        return withNextAgentState({ success: true })
       }
 
       if (interactionType === 'PLACE') {
         if (cubeState !== 'in_hand') {
-          return { success: false, failure_reason: 'PLACE precondition failed: no item in hand' }
+          return withNextAgentState({ success: false, failure_reason: 'PLACE precondition failed: no item in hand' })
         }
 
         if (targetItem === 'fridge_main') {
           if (!fridgeDoorOpen) {
-            return { success: false, failure_reason: 'PLACE precondition failed: fridge door closed' }
+            return withNextAgentState({ success: false, failure_reason: 'PLACE precondition failed: fridge door closed' })
           }
           setCubeState('in_fridge')
-          return { success: true }
+          return withNextAgentState({ success: true }, 'in_fridge')
         }
 
         if (targetItem === 'table_surface') {
           setCubeState('on_table')
-          return { success: true }
+          return withNextAgentState({ success: true }, 'on_table')
         }
 
-        return { success: false, failure_reason: 'PLACE unsupported target' }
+        return withNextAgentState({ success: false, failure_reason: 'PLACE unsupported target' })
       }
 
-      return { success: false, failure_reason: `Unsupported interaction ${interactionType}` }
+      return withNextAgentState({ success: false, failure_reason: `Unsupported interaction ${interactionType}` })
     },
     [cubeState, fridgeDoorOpen]
   )
@@ -242,7 +250,6 @@ export function Level1({ onBack }) {
     setCubeState('on_table')
     setActionLine('Action: waiting for next step')
     agentSystem.resetAgent()
-    agentSystem.stopAutoLoop()
   }
 
   const manualToggleDoor = () => {

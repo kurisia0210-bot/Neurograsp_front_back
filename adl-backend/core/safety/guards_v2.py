@@ -8,7 +8,7 @@ from typing import Deque, Dict, List, Optional, Set, Tuple
 
 from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
-from core.runtime.world_facts import (
+from core.world_facts import (
     WorldFacts,
     build_world_facts_from_observation,
     to_observation_world_view,
