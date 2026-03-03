@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 
 import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
 import { normalizeBackendIntent } from './ActionContract'
-import { resolveRegisteredAction } from './registry'
+import { isObjectActionAllowed } from './registry'
 
 function buildFallbackWorldSnapshot() {
   return {
@@ -36,9 +36,14 @@ function normalizeExecutionResult(worldResult) {
   }
 }
 
+function resolveInteractionActionKey(normalizedAction) {
+  if (normalizedAction?.type !== 'INTERACT') return null
+  return String(normalizedAction.interaction_type || 'NONE').toUpperCase()
+}
+
 /**
  * AgentSystem - orchestration loop only.
- * World business state is owned by WorldStateManager.
+ * World business state is owned by caller-provided runtime.
  */
 export function useAgentSystem({
   onActionExecuted = () => {},
@@ -113,17 +118,17 @@ export function useAgentSystem({
   }, [readWorldSnapshot, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
   const executeAction = useCallback((actionPayload) => {
-    const resolved = resolveRegisteredAction(actionPayload)
-    if (!resolved.handled || !resolved.intent) {
-      const failedAction = normalizeBackendIntent(actionPayload)
+    const normalizedAction = normalizeBackendIntent(actionPayload)
+    const rawType = String(actionPayload?.type || '').toUpperCase()
+    if (normalizedAction.type === 'THINK' && rawType !== 'THINK') {
       const executionResult = {
         success: false,
-        failure_type: resolved.status || 'NO_HANDLER',
-        failure_reason: resolved.message || 'Action could not be resolved by registry'
+        failure_type: 'INVALID_INTENT',
+        failure_reason: normalizedAction.content || 'Invalid intent payload'
       }
       setLastEffects([
         {
-          key: 'registry.resolve',
+          key: 'registry.validate',
           before: 'pending',
           after: 'failed',
           ok: false,
@@ -131,14 +136,13 @@ export function useAgentSystem({
         }
       ])
       return {
-        action: failedAction,
+        action: normalizedAction,
         agentState: readWorldSnapshot().agent,
         executionResult
       }
     }
 
-    const normalizedAction = resolved.intent
-    const resolvedActionKey = resolved.actionKey
+    const resolvedActionKey = resolveInteractionActionKey(normalizedAction)
     const beforeSnapshot = readWorldSnapshot()
     const beforeAgent = beforeSnapshot.agent
     const effects = []
@@ -183,6 +187,14 @@ export function useAgentSystem({
           }
           break
         }
+        if (!isObjectActionAllowed(normalizedAction.target_poi, 'MOVE_TO')) {
+          executionResult = {
+            success: false,
+            failure_type: 'ACTION_NOT_ALLOWED',
+            failure_reason: `MOVE_TO is not allowed for target: ${normalizedAction.target_poi}`
+          }
+          break
+        }
         const worldExecution = runWorldExecution()
         executionResult = worldExecution.result
         afterAgent = worldExecution.nextAgent
@@ -190,6 +202,25 @@ export function useAgentSystem({
       }
 
       case 'INTERACT': {
+        if (resolvedActionKey !== 'NONE') {
+          if (!normalizedAction.target_item) {
+            executionResult = {
+              success: false,
+              failure_type: 'INVALID_INTENT',
+              failure_reason: `INTERACT(${resolvedActionKey}) missing target_item`
+            }
+            break
+          }
+          if (!isObjectActionAllowed(normalizedAction.target_item, resolvedActionKey)) {
+            executionResult = {
+              success: false,
+              failure_type: 'ACTION_NOT_ALLOWED',
+              failure_reason: `${resolvedActionKey} is not allowed for target: ${normalizedAction.target_item}`
+            }
+            break
+          }
+        }
+
         const worldExecution = runWorldExecution()
         executionResult = worldExecution.result
         afterAgent = worldExecution.nextAgent

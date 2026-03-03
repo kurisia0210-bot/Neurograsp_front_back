@@ -39,6 +39,7 @@ export function buildNearbyObjects(cubes = [], fridgeOpen = false) {
     ...cubeFacts,
     {
       id: 'fridge_door',
+      is_open: Boolean(fridgeOpen),
       state: fridgeOpen ? 'open' : 'closed',
       relation: 'front of agent'
     },
