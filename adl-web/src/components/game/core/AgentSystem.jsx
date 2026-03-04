@@ -2,8 +2,28 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
 import { normalizeBackendIntent } from './ActionContract'
-import { resolveRegisteredAction } from './registry'
 
+// ============================================================================
+// AGENT SYSTEM CORE HOOK
+// ============================================================================
+// 这是整个Agent系统的核心协调器，负责：
+// 1. 与后端AI大脑通信
+// 2. 管理Agent的思考循环
+// 3. 协调世界状态和动作执行
+// 4. 处理自动循环和手动控制
+// 
+// 设计原则：
+// - 纯协调逻辑，不持有世界状态
+// - 通过回调与WorldStateManager交互
+// - 遵循Constitution：显式状态、纯函数渲染
+// ============================================================================
+
+
+/**
+ * 构建默认的世界快照
+ * 当无法从WorldStateManager获取状态时使用
+ * @returns {Object} 默认世界状态
+ */
 function buildFallbackWorldSnapshot() {
   return {
     nearby_objects: [],
@@ -14,6 +34,13 @@ function buildFallbackWorldSnapshot() {
     }
   }
 }
+
+/**
+ * 规范化世界快照数据
+ * 确保数据结构一致，处理缺失字段
+ * @param {Object} rawWorldState - 原始世界状态
+ * @returns {Object} 规范化后的世界状态
+ */
 
 function normalizeWorldSnapshot(rawWorldState) {
   const worldState = rawWorldState || buildFallbackWorldSnapshot()
@@ -106,17 +133,17 @@ export function useAgentSystem({
   }, [readWorldSnapshot, resolveGoalSpecOverride, userInstruction, lastAction, lastResult, lastEffects])
 
   const executeAction = useCallback((actionPayload) => {
-    const resolved = resolveRegisteredAction(actionPayload)
-    if (!resolved.handled || !resolved.intent) {
-      const failedAction = normalizeBackendIntent(actionPayload)
+    const normalizedAction = normalizeBackendIntent(actionPayload)
+    const rawType = String(actionPayload?.type || '').toUpperCase()
+    if (normalizedAction.type === 'THINK' && rawType !== 'THINK') {
       const executionResult = {
         success: false,
-        failure_type: resolved.status || 'NO_HANDLER',
-        failure_reason: resolved.message || 'Action could not be resolved by registry'
+        failure_type: 'INVALID_INTENT',
+        failure_reason: normalizedAction.content || 'Invalid intent payload'
       }
       setLastEffects([
         {
-          key: 'registry.resolve',
+          key: 'intent.validate',
           before: 'pending',
           after: 'failed',
           ok: false,
@@ -124,13 +151,12 @@ export function useAgentSystem({
         }
       ])
       return {
-        action: failedAction,
+        action: normalizedAction,
         agentState: readWorldSnapshot().agent,
         executionResult
       }
     }
-    const normalizedAction = resolved.intent
-    const resolvedActionKey = resolved.actionKey
+
     const beforeSnapshot = readWorldSnapshot()
     const beforeAgent = beforeSnapshot.agent
     const effects = []
@@ -140,70 +166,54 @@ export function useAgentSystem({
       failure_reason: ''
     }
 
-    switch (normalizedAction.type) {
-      case 'MOVE_TO': {
-        if (!normalizedAction.target_poi) {
-          executionResult = {
-            success: false,
-            failure_type: null,
-            failure_reason: 'MOVE_TO missing target_poi'
-          }
-          break
+    const runWorldExecution = () => {
+      if (typeof executeWorldAction !== 'function') {
+        return {
+          success: false,
+          failure_type: 'EXECUTOR_MISSING',
+          failure_reason: 'executeWorldAction is not configured'
         }
-        if (typeof executeWorldAction !== 'function') {
-          executionResult = {
-            success: false,
-            failure_type: 'EXECUTOR_MISSING',
-            failure_reason: 'executeWorldAction is not configured'
-          }
-          break
-        }
-        const worldResult = executeWorldAction(normalizedAction) || {}
-        executionResult = {
-          success: Boolean(worldResult.success),
-          failure_type: worldResult.failure_type || null,
-          failure_reason: worldResult.failure_reason || ''
-        }
-        break
       }
-
-      case 'INTERACT': {
-        if (typeof executeWorldAction !== 'function') {
-          executionResult = {
-            success: false,
-            failure_type: 'EXECUTOR_MISSING',
-            failure_reason: 'executeWorldAction is not configured'
-          }
-          break
-        }
-        const worldResult = executeWorldAction(normalizedAction) || {}
-        executionResult = {
-          success: Boolean(worldResult.success),
-          failure_type: worldResult.failure_type || null,
-          failure_reason: worldResult.failure_reason || ''
-        }
-        effects.push({
-          key: `interact.${String(resolvedActionKey || normalizedAction.interaction_type || 'none').toLowerCase()}`,
-          before: normalizedAction.target_item || normalizedAction.target_poi || '',
-          after: executionResult.success ? 'success' : 'failed',
-          ok: executionResult.success,
-          detail: executionResult.failure_reason || ''
-        })
-        break
+      const worldResult = executeWorldAction(normalizedAction) || {}
+      return {
+        success: Boolean(worldResult.success),
+        failure_type: worldResult.failure_type || null,
+        failure_reason: worldResult.failure_reason || ''
       }
+    }
 
-      case 'THINK':
-      case 'SPEAK':
-      case 'IDLE':
-      case 'FINISH':
-        break
-
-      default:
+    if (normalizedAction.type === 'MOVE_TO') {
+      if (!normalizedAction.target_poi) {
         executionResult = {
           success: false,
           failure_type: null,
-          failure_reason: `Unknown action type: ${normalizedAction.type}`
+          failure_reason: 'MOVE_TO missing target_poi'
         }
+      } else {
+        executionResult = runWorldExecution()
+      }
+    } else if (normalizedAction.type === 'INTERACT') {
+      executionResult = runWorldExecution()
+      effects.push({
+        key: `interact.${String(normalizedAction.interaction_type || 'none').toLowerCase()}`,
+        before: normalizedAction.target_item || normalizedAction.target_poi || '',
+        after: executionResult.success ? 'success' : 'failed',
+        ok: executionResult.success,
+        detail: executionResult.failure_reason || ''
+      })
+    } else if (
+      normalizedAction.type === 'THINK' ||
+      normalizedAction.type === 'SPEAK' ||
+      normalizedAction.type === 'IDLE' ||
+      normalizedAction.type === 'FINISH'
+    ) {
+      // no world mutation
+    } else {
+      executionResult = {
+        success: false,
+        failure_type: null,
+        failure_reason: `Unknown action type: ${normalizedAction.type}`
+      }
     }
 
     const afterSnapshot = readWorldSnapshot()

@@ -6,6 +6,7 @@ import { useAgentSystem } from '../components/game/core/AgentSystem'
 import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
 import { WholeCube } from '../components/game/mechanics/GameCube'
+import { GameFridge } from '../components/game/mechanics/GameFridge'
 import { ActionTriggerBubble } from '../components/game/mechanics/ActionTriggerBubble'
 import { ActionType } from '../components/game/core/ActionContract'
 import {
@@ -318,38 +319,13 @@ export function AgentPlayground({ onBack }) {
         <TmpTable />
         <TmpHuman position={agentVisualPosition} />
 
-        <group position={[-3, 0, -0.5]}>
-          <mesh position={[0, 1, 0]}>
-            <boxGeometry args={[1, 2, 1]} />
-            <meshStandardMaterial color="#74b9ff" wireframe={true} transparent={true} opacity={0.8} />
-          </mesh>
-          <mesh
-            position={[0.5, 1, 0.51]}
-            rotation={[0, worldStateManager.fridgeDoorAngle || 0, 0]}
-            onClick={worldStateManager.toggleFridgeDoor}
-          >
-            <mesh position={[-0.5, 0, 0]}>
-              <boxGeometry args={[1, 2, 0.05]} />
-              <meshStandardMaterial
-                color={worldStateManager.fridgeOpen ? '#74b9ff' : '#b2bec3'}
-                transparent={true}
-                opacity={0.7}
-              />
-            </mesh>
-          </mesh>
-        </group>
-
-        <mesh position={[FRIDGE_MAIN_DROP_CENTER[0], 1.15, FRIDGE_MAIN_DROP_CENTER[1]]}>
-          <boxGeometry
-            args={[FRIDGE_MAIN_DROP_HALF_SIZE[0] * 2, 1.1, FRIDGE_MAIN_DROP_HALF_SIZE[1] * 2]}
-          />
-          <meshStandardMaterial
-            color={worldStateManager.fridgeOpen ? '#22c55e' : '#64748b'}
-            transparent
-            opacity={worldStateManager.fridgeOpen ? 0.18 : 0.08}
-            wireframe
-          />
-        </mesh>
+        <GameFridge
+          doorAngle={worldStateManager.fridgeDoorAngle || 0}
+          isOpen={worldStateManager.fridgeOpen}
+          onToggleDoor={worldStateManager.toggleFridgeDoor}
+          dropCenter={FRIDGE_MAIN_DROP_CENTER}
+          dropHalfSize={FRIDGE_MAIN_DROP_HALF_SIZE}
+        />
 
         {worldStateManager.cubes.map((cube) => (
           <WholeCube

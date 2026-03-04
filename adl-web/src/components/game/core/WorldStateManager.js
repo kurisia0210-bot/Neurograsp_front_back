@@ -2,20 +2,53 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { buildWorldFacts, isPositionTriplet } from './worldFacts'
 import { normalizeBackendIntent } from './ActionContract'
 
-const DOOR_OPEN_ANGLE = 2.0
-const DOOR_CLOSED_ANGLE = 0
-const DOOR_ANIM_STEP = 0.14
-const DOOR_ANIM_INTERVAL_MS = 16
+// ============================================================================
+// WORLD STATE MANAGER
+// ============================================================================
+// 这是游戏世界的状态管理器，负责：
+// 1. 管理所有游戏对象的状态（方块、冰箱、Agent位置等）
+// 2. 处理游戏对象的交互逻辑（拾取、放置、开门等）
+// 3. 执行来自AgentSystem的动作指令
+// 4. 提供世界状态查询接口
+// 
+// 设计原则：
+// - 单一真相源：所有世界状态集中管理
+// - 纯状态操作：状态变更通过setState完成
+// - 与渲染分离：不包含任何Three.js渲染逻辑
+// - 遵循Constitution：显式状态、语义状态驱动
+// ============================================================================
+
+
+// 冰箱门动画常量
+const DOOR_OPEN_ANGLE = 2.0      // 开门角度（弧度）
+const DOOR_CLOSED_ANGLE = 0      // 关门角度
+const DOOR_ANIM_STEP = 0.14      // 每帧动画步长
+const DOOR_ANIM_INTERVAL_MS = 16 // 动画间隔（约60fps）
+
+// 默认Agent状态
 const DEFAULT_AGENT_STATE = {
-  location: 'table_center',
-  holding: null
+  location: 'table_center',  // 默认位置：桌子中心
+  holding: null              // 默认手中无物品
 }
+
+/**
+ * 从方块列表中推断Agent手中持有的方块
+ * @param {Array} cubeList - 方块列表
+ * @returns {string|null} 持有的方块ID，无则为null
+ */
 
 function inferHoldingFromCubes(cubeList = []) {
   const holdingCube = cubeList.find((cube) => cube.state === 'in_hand')
   return holdingCube?.id || null
 }
 
+/**
+ * 规范化Agent状态
+ * 确保Agent状态数据结构一致，处理缺失字段
+ * @param {Object} rawAgentState - 原始Agent状态
+ * @param {Array} cubes - 方块列表，用于推断持有状态
+ * @returns {Object} 规范化后的Agent状态
+ */
 function normalizeAgentState(rawAgentState, cubes = []) {
   const safeRaw = rawAgentState || {}
   const hasHolding = Object.prototype.hasOwnProperty.call(safeRaw, 'holding')
@@ -24,6 +57,20 @@ function normalizeAgentState(rawAgentState, cubes = []) {
     holding: hasHolding ? safeRaw.holding : inferHoldingFromCubes(cubes)
   }
 }
+
+/**
+ * World State Manager Hook
+ * 管理游戏世界的所有状态，包括：
+ * - Agent位置和持有状态
+ * - 冰箱门开关状态和动画
+ * - 所有方块的状态和位置
+ * 
+ * @param {Object} options - 配置选项
+ * @param {boolean} options.initialFridgeOpen - 初始冰箱门状态
+ * @param {Object} options.initialAgentState - 初始Agent状态
+ * @param {Array} options.initialCubes - 初始方块配置
+ * @returns {Object} 世界状态管理器的API接口
+ */
 
 export function useWorldStateManager(options = {}) {
   const {
@@ -353,46 +400,4 @@ export function useWorldStateManager(options = {}) {
 
     getHoldingCube
   }
-}
-
-export function useHoldingItemManager(cubes, setCubes) {
-  const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
-
-  const pickUpCube = (cubeId) => {
-    setCubes((prevCubes) =>
-      prevCubes.map((cube) => {
-        if (cube.id === cubeId && cube.state === 'on_table') {
-          console.log(`Mouse PICK: ${cube.name}`)
-          return { ...cube, state: 'in_hand' }
-        }
-        return cube
-      })
-    )
-  }
-
-  const placeCube = (cubeId, position, newState = 'on_table') => {
-    setCubes((prevCubes) =>
-      prevCubes.map((cube) => {
-        if (cube.id === cubeId && cube.state === 'in_hand') {
-          console.log(`Mouse PLACE: ${cube.name} -> ${newState}`)
-          return { ...cube, state: newState, position }
-        }
-        return cube
-      })
-    )
-  }
-
-  const isHolding = (cubeId) => holdingCube?.id === cubeId
-
-  return {
-    holdingCube,
-    pickUpCube,
-    placeCube,
-    isHolding
-  }
-}
-
-export default {
-  useWorldStateManager,
-  useHoldingItemManager
 }
