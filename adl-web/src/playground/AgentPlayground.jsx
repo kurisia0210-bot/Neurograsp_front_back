@@ -15,8 +15,9 @@ import {
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
+import { TmpTable } from '../components/TmpTable'
+import { TmpHuman } from '../components/TmpHuman'
 
-const TABLE_HEIGHT = 0.85
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
@@ -314,17 +315,8 @@ export function AgentPlayground({ onBack }) {
         <ambientLight intensity={0.7} />
         <directionalLight position={[-5, 10, 5]} intensity={1.2} />
 
-        <mesh position={[0, TABLE_HEIGHT / 2, 0]}>
-          <boxGeometry args={[4, TABLE_HEIGHT, 2]} />
-          <meshStandardMaterial color="#636e72" />
-        </mesh>
-
-        <group position={agentVisualPosition}>
-          <mesh position={[0, 1, 0]}>
-            <capsuleGeometry args={[0.3, 1, 4]} />
-            <meshStandardMaterial color="yellow" wireframe />
-          </mesh>
-        </group>
+        <TmpTable />
+        <TmpHuman position={agentVisualPosition} />
 
         <group position={[-3, 0, -0.5]}>
           <mesh position={[0, 1, 0]}>
