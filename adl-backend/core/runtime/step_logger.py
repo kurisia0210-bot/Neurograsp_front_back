@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -45,15 +45,6 @@ def _safe_result(result: Any) -> Dict[str, Any]:
     }
 
 
-def _safe_reflex(reflex: Any) -> Dict[str, Any]:
-    if reflex is None:
-        return {}
-    return {
-        "verdict": _enum_to_value(getattr(reflex, "verdict", None)),
-        "message": getattr(reflex, "message", ""),
-    }
-
-
 def _safe_effects(effects: Any) -> list[Dict[str, Any]]:
     if not effects:
         return []
@@ -77,15 +68,8 @@ def emit_step_summary(
     obs: Any,
     intent: Any,
     exec_result: Any,
-    reflex_verdict: Any,
     error: Dict[str, Any],
 ) -> None:
-    """
-    Emit structured per-step logs.
-    - Human brief line for quick debugging (default ON).
-    - One-line JSON for machine parsing (default ON).
-    - Pretty JSON block (default OFF).
-    """
     summary = {
         "event": "step_summary",
         "ts": time.time(),
@@ -103,7 +87,6 @@ def emit_step_summary(
         "output": {
             "intent": _safe_action(intent),
             "execution_result": _safe_result(exec_result),
-            "reflex_verdict": _safe_reflex(reflex_verdict),
             "error": error,
         },
     }
@@ -112,17 +95,16 @@ def emit_step_summary(
         sid = summary["session_id"]
         eid = summary["episode_id"]
         step = summary["step_id"]
-        intent = summary["output"]["intent"]
+        intent_safe = summary["output"]["intent"]
         exec_result_safe = summary["output"]["execution_result"]
-        reflex_safe = summary["output"]["reflex_verdict"]
         err = summary["output"]["error"] or {}
-        content = _shorten(str(intent.get("content", "")))
+        content = _shorten(str(intent_safe.get("content", "")))
         print(
             "[StepSummaryBrief] "
             f"s={sid} ep={eid} step={step} "
-            f"intent={intent.get('type')}({intent.get('interaction_type')}) "
-            f"target={intent.get('target_item') or intent.get('target_poi')} "
-            f"ok={exec_result_safe.get('success')} reflex={reflex_safe.get('verdict')} "
+            f"intent={intent_safe.get('type')}({intent_safe.get('interaction_type')}) "
+            f"target={intent_safe.get('target_item') or intent_safe.get('target_poi')} "
+            f"ok={exec_result_safe.get('success')} "
             f"err={err.get('error_code')} msg={content!r}"
         )
 
@@ -140,9 +122,7 @@ def emit_step_summary(
             "episode_id": summary["episode_id"],
             "step_id": summary["step_id"],
             "intent": summary["output"]["intent"],
-            "verdict": summary["output"]["reflex_verdict"],
             "effects": summary["input"]["last_effects"],
             "result": summary["output"]["execution_result"],
         }
         print("[StepTrace] " + json.dumps(trace, ensure_ascii=False, separators=(",", ":")))
-

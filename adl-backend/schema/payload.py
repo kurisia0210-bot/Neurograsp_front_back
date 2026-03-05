@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -6,13 +6,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# ==========================================
-# 1. Enum Definitions
-# ==========================================
-
-
 class AgentActionType(str, Enum):
-    # Level 1 (Kitchen)
     MOVE_TO = "MOVE_TO"
     INTERACT = "INTERACT"
     THINK = "THINK"
@@ -57,11 +51,6 @@ class InteractionType(str, Enum):
     NONE = "NONE"
 
 
-# ==========================================
-# 2. Strict Schemas
-# ==========================================
-
-
 class AgentSelfState(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
@@ -81,7 +70,6 @@ class FailureType(str, Enum):
     SCHEMA_ERROR = "SCHEMA_ERROR"
     REASONING_ERROR = "REASONING_ERROR"
     GOAL_AMBIGUOUS = "GOAL_AMBIGUOUS"
-    REFLEX_BLOCK = "REFLEX_BLOCK"
 
 
 class ActionExecutionResult(BaseModel):
@@ -99,11 +87,6 @@ class WorldEffect(BaseModel):
 
 
 class GoalSpecPayload(BaseModel):
-    """
-    Optional structured goal hint sent by frontend.
-    Backend still validates/resolves this into canonical GoalSpec.
-    """
-
     goal_type: Optional[str] = Field(default=None, description="Goal type, e.g. MOVE_TO/PUT_IN")
     goal_id: Optional[str] = Field(default=None, description="Stable goal identifier")
     dsl: Optional[str] = Field(default=None, description="Goal DSL expression")
@@ -111,11 +94,10 @@ class GoalSpecPayload(BaseModel):
 
 
 class ObservationPayload(BaseModel):
-    # P0-1/P0-3: hierarchical trace keys
     session_id: str = Field(..., description="Session UUID")
     episode_id: Optional[int] = Field(
         default=None,
-        description="Episode id within this session. Optional in request; backend assigns when missing"
+        description="Episode id within this session. Optional in request; backend assigns when missing",
     )
     step_id: int = Field(..., description="Step number in this episode")
 
@@ -125,28 +107,26 @@ class ObservationPayload(BaseModel):
     global_task: str
     goal_spec: Optional[GoalSpecPayload] = Field(
         default=None,
-        description="Optional structured goal hint to avoid per-tick NL parsing"
+        description="Optional structured goal hint to avoid per-tick NL parsing",
     )
 
-    # P0-2: previous-step closure data
     last_action: Optional["ActionPayload"] = Field(
         default=None,
-        description="Last executed/adjudicated action"
+        description="Last executed/adjudicated action",
     )
     last_result: Optional[ActionExecutionResult] = Field(
         default=None,
-        description="Last action execution result"
+        description="Last action execution result",
     )
     last_effects: List[WorldEffect] = Field(
         default_factory=list,
-        description="Last action world effects for observability/replay"
+        description="Last action world effects for observability/replay",
     )
 
 
 class ActionPayload(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
-    # trace keys copied from request
     session_id: str = Field(..., description="Session UUID")
     episode_id: Optional[int] = Field(default=None, description="Episode id in session")
     step_id: int = Field(..., description="Step number in episode")
@@ -157,49 +137,30 @@ class ActionPayload(BaseModel):
 
     interaction_type: InteractionType = Field(
         default=InteractionType.NONE,
-        description="Specific intent for INTERACT"
+        description="Specific intent for INTERACT",
     )
 
     content: str = Field(..., description="Reasoning/explanation text")
-
-
-# ==========================================
-# 3. System Responses / Verdicts
-# ==========================================
 
 
 class SystemResponses:
     pass
 
 
-# Placeholder constants; must be overwritten with real trace ids before use.
 SystemResponses.CONFUSED = ActionPayload(
     session_id="SYSTEM",
     episode_id=0,
     step_id=0,
     type=AgentActionType.THINK,
-    content="System Confused"
+    content="System Confused",
 )
 SystemResponses.SILENCE = ActionPayload(
     session_id="SYSTEM",
     episode_id=0,
     step_id=0,
     type=AgentActionType.IDLE,
-    content="..."
+    content="...",
 )
-
-
-class ReflexVerdict(str, Enum):
-    ALLOW = "ALLOW"
-    BLOCK = "BLOCK"
-    IGNORE = "IGNORE"
-
-
-class ReflexVerdictModel(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
-    verdict: ReflexVerdict = Field(..., description="Reflex verdict")
-    message: str = Field(..., description="Reflex verdict reason")
 
 
 class StepErrorPayload(BaseModel):
@@ -212,22 +173,17 @@ class StepErrorPayload(BaseModel):
 
 
 class AgentStepResponse(BaseModel):
-    # top-level trace keys for observability
     session_id: str = Field(..., description="Session UUID")
     episode_id: int = Field(..., description="Episode id in session")
     step_id: int = Field(..., description="Step number in episode")
 
     intent: ActionPayload
     execution_result: ActionExecutionResult
-    reflex_verdict: ReflexVerdictModel
     effects: List[WorldEffect] = Field(
         default_factory=list,
-        description="Observed world effects from previous step closure data"
+        description="Observed world effects from previous step closure data",
     )
     error: StepErrorPayload
 
 
-# Resolve forward references used by ObservationPayload.last_action
 ObservationPayload.model_rebuild()
-
-
