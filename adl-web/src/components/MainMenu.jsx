@@ -1,34 +1,34 @@
 ﻿import React from 'react'
-import { motion } from 'framer-motion' // 馃憟 寮曞叆鍔ㄦ晥搴?
+import { motion } from 'framer-motion' // 👈 引入动效库
 import { VitalityLines } from './ui/VitalityLines'
 import { PetalsBackground } from './ui/PetalsBackground'
 
-// ============ 鍔ㄧ敾鍙樹綋閰嶇疆 (Animation Variants) ============
+// ============ 动画变体配置 (Animation Variants) ============
 
-// 1. 瀹瑰櫒鍙樹綋锛氭帶鍒跺瓙鍏冪礌鐨勯敊钀藉叆鍦?
+// 1. 容器变体：控制子元素的错落入场
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.15, // 姣忎釜瀛愬厓绱犻棿闅?0.15绉掑叆鍦?
+      staggerChildren: 0.15, // 每个子元素间隔 0.15秒入场
       delayChildren: 0.3,
     },
   },
 }
 
-// 2. 閫氱敤鍏冪礌鍏ュ満鍙樹綋锛堝悜涓婃诞鐜帮級
+// 2. 通用元素入场变体（向上浮现）
 const itemVariants = {
   hidden: { y: 20, opacity: 0 },
   visible: {
     y: 0,
     opacity: 1,
-    transition: { type: 'spring', stiffness: 100, damping: 15 }, // 寮规€х墿鐞嗘晥鏋?
+    transition: { type: 'spring', stiffness: 100, damping: 15 }, // 弹性物理效果
   },
 }
 
 
-// 3. 鑳屾櫙鏋佸厜鎱㈠姩鍙樹綋
+// 3. 背景极光慢动变体
 const auroraVariants = {
   animate: {
     scale: [1, 1.1, 0.9, 1],
@@ -36,7 +36,7 @@ const auroraVariants = {
     y: [0, -30, 30, 0],
     rotate: [0, 10, -10, 0],
     transition: {
-      duration: 20, // 鏋佹參閫熸祦鍔?
+      duration: 20, // 极慢速流动
       repeat: Infinity,
       repeatType: "mirror",
       ease: "easeInOut",
@@ -48,24 +48,24 @@ export function MainMenu({ onStartLevel }) {
   return (
     <div className="w-full h-screen bg-slate-50 flex flex-col items-center justify-center p-8 relative overflow-hidden font-sans">
       
-      {/* ============ 鉁?鑳屾櫙鍚堟垚灞?============ */}
+      {/* ============ ✨ 背景合成层 ============ */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
          
-         {/* 1. 鏋佸厜搴曡壊 (绋嶅井鍑忔贰锛屼綔涓烘皼鍥村厜) */}
+         {/* 1. 极光底色 (稍微减淡，作为氛围光) */}
          <div className="absolute inset-0 bg-gradient-to-b from-blue-50/50 to-white/50"></div>
 
-         {/* 2. 鏃嬭浆鐨勭敓鍛戒箣鑺?(Petals) */}
+         {/* 2. 旋转的生命之花 (Petals) */}
          <PetalsBackground />
 
-         {/* 3. 鐏靛姩鐨勭嚎鏉?(Vitality Lines) - 鍙犲姞鍦ㄨ姳鐡ｄ箣涓?*/}
+         {/* 3. 灵动的线条 (Vitality Lines) - 叠加在花瓣之上 */}
          <VitalityLines />
 
-         {/* 4. 鍣偣绾圭悊 (澧炲姞璐ㄦ劅) */}
+         {/* 4. 噪点纹理 (增加质感) */}
          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.04] mix-blend-overlay z-20"></div>
       </div>
 
 
-      {/* ============ 馃専 UI 鍐呭灞?============ */}
+      {/* ============ 🌟 UI 内容层 ============ */}
       <motion.div 
         className="z-10 text-center mb-12"
         initial="hidden"
@@ -80,7 +80,7 @@ export function MainMenu({ onStartLevel }) {
         </motion.p>
       </motion.div>
 
-      {/* 鍏冲崱閫夋嫨鍖?*/}
+      {/* 关卡选择区 */}
       <motion.div 
         className="z-10 grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl"
         initial="hidden"
@@ -88,7 +88,7 @@ export function MainMenu({ onStartLevel }) {
         variants={containerVariants}
       >
         
-        {/* ============ 鍗＄墖 1: 鏋佽嚧閫忔槑鍖栧鐞?============ */}
+        {/* ============ 卡片 1: 极致透明化处理 ============ */}
         <motion.div 
           variants={itemVariants}
           whileHover={{ 
@@ -98,30 +98,30 @@ export function MainMenu({ onStartLevel }) {
           }}
           whileTap={{ scale: 0.98 }}
           onClick={() => onStartLevel(1)}
-          // 馃憞 鍏抽敭淇敼锛歜g-white/40 (鏇撮€?, backdrop-blur-xl (寮烘ā绯?
+          // 👇 关键修改：bg-white/40 (更透), backdrop-blur-xl (强模糊)
           className="group relative bg-white/40 backdrop-blur-xl p-8 rounded-3xl shadow-lg border border-white/60 cursor-pointer flex items-center gap-6 overflow-hidden hover:bg-white/50 transition-colors"
         >
-          {/* 鍐呴儴楂樺厜娴?*/}
+          {/* 内部高光流 */}
           <div className="absolute inset-0 bg-gradient-to-br from-white/80 via-transparent to-transparent opacity-50"></div>
           
           <motion.div 
             whileHover={{ y: -8, rotate: [0, -5, 5, 0] }}
             className="relative w-24 h-24 bg-gradient-to-tr from-blue-100/80 to-white/80 rounded-2xl flex items-center justify-center text-5xl shadow-sm backdrop-blur-md"
           >
-            馃嵆
+            🍳
           </motion.div>
           
           <div className="text-left relative z-10">
-            <h3 className="text-2xl font-bold text-slate-800 group-hover:text-blue-700">鍘ㄦ埧鏁寸悊</h3>
-            <p className="text-slate-600 text-sm mt-2 font-medium">浠诲姟锛氬皢鐗╁搧褰掍綅锛屾仮澶嶇敓娲荤З搴忋€?/p>
+            <h3 className="text-2xl font-bold text-slate-800 group-hover:text-blue-700">厨房整理</h3>
+            <p className="text-slate-600 text-sm mt-2 font-medium">任务：将物品归位，恢复生活秩序。</p>
             <div className="mt-4 flex gap-3 flex-wrap">
-              <Badge color="white">馃 璁ょ煡璁粌</Badge>
-              <Badge color="white">馃 鎷栨嫿鎺у埗</Badge>
+              <Badge color="white">🧠 认知训练</Badge>
+              <Badge color="white">🤏 拖拽控制</Badge>
             </div>
           </div>
         </motion.div>
 
-          {/* ============ 鍗＄墖 2: 绱ф€ヨ仈缁?(宸茶В閿? ============ */}
+          {/* ============ 卡片 2: 紧急联络 (已解锁) ============ */}
         <motion.div 
           variants={itemVariants}
           whileHover={{ 
@@ -130,49 +130,49 @@ export function MainMenu({ onStartLevel }) {
             boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.1)" 
           }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => onStartLevel('level2-disabled')} // 馃憟 缁戝畾鐐瑰嚮浜嬩欢
-          // 馃憞 绉婚櫎鐏拌壊婊ら暅锛屾敼涓烘縺娲绘牱寮?
+          onClick={() => onStartLevel('level2-disabled')} // 👈 绑定点击事件
+          // 👇 移除灰色滤镜，改为激活样式
           className="group relative bg-white/40 backdrop-blur-xl p-8 rounded-3xl shadow-lg border border-white/60 cursor-pointer flex items-center gap-6 overflow-hidden hover:bg-white/50 transition-colors"
         >
-          {/* 鍐呴儴楂樺厜娴?*/}
+          {/* 内部高光流 */}
           <div className="absolute inset-0 bg-gradient-to-br from-purple-50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
           <motion.div 
             whileHover={{ y: -8, rotate: [0, 5, -5, 0] }}
-            // 鏀逛负绱壊绯诲浘鏍囪儗鏅?
+            // 改为紫色系图标背景
             className="relative w-24 h-24 bg-gradient-to-tr from-purple-100/80 to-white/80 rounded-2xl flex items-center justify-center text-5xl shadow-sm backdrop-blur-md"
           >
-            鈽庯笍
+            ☎️
           </motion.div>
           
           <div className="text-left relative z-10">
-            <h3 className="text-2xl font-bold text-slate-800 group-hover:text-purple-700">绱ф€ユ嫧鍙?/h3>
-            <p className="text-slate-600 text-sm mt-2 font-medium">浠诲姟锛氳蹇嗗苟鎷ㄦ墦鍙风爜锛岄敾鐐肩簿缁嗗姩浣溿€?/p>
+            <h3 className="text-2xl font-bold text-slate-800 group-hover:text-purple-700">紧急拨号</h3>
+            <p className="text-slate-600 text-sm mt-2 font-medium">任务：记忆并拨打号码，锻炼精细动作。</p>
             <div className="mt-4 flex gap-3 flex-wrap">
-              <Badge color="white">馃 璁板繂璁粌</Badge>
-              <Badge color="white">馃憜 绮剧粏鎺у埗</Badge>
+              <Badge color="white">🧠 记忆训练</Badge>
+              <Badge color="white">👆 精细控制</Badge>
             </div>
           </div>
         </motion.div>
 
       </motion.div>
 
-      {/* 馃И 寮€鍙戣€呭疄楠屽鍗＄墖 */}
+      {/* 🧪 开发者实验室卡片 */}
       <motion.div 
           variants={itemVariants}
           whileHover={{ scale: 1.02, y: -2 }}
           whileTap={{ scale: 0.98 }}
-          // 馃憞 浼犲弬 'playground' 瀵瑰簲 App.jsx 閲岀殑璺敱
+          // 👇 传参 'playground' 对应 App.jsx 里的路由
           onClick={() => onStartLevel('playground')} 
           className="col-span-1 md:col-span-2 mt-4 bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-slate-600 cursor-pointer flex items-center justify-center gap-4 group hover:bg-slate-800 transition-all"
         >
-          <span className="text-2xl group-hover:rotate-12 transition-transform">馃И</span>
+          <span className="text-2xl group-hover:rotate-12 transition-transform">🧪</span>
           <span className="text-slate-200 font-bold font-mono group-hover:text-white">
-            杩涘叆寮€鍙戣€呰瘯楠屽満 (Playground)
+            进入开发者试验场 (Playground)
           </span>
         </motion.div>
 
-      {/* 馃 Agent Playground 鍗＄墖 */}
+      {/* 🤖 Agent Playground 卡片 */}
       <motion.div 
           variants={itemVariants}
           whileHover={{ scale: 1.02, y: -2 }}
@@ -180,9 +180,9 @@ export function MainMenu({ onStartLevel }) {
           onClick={() => onStartLevel('agent-playground')} 
           className="col-span-1 md:col-span-2 mt-2 bg-gradient-to-r from-blue-800/80 to-cyan-700/80 backdrop-blur-md p-4 rounded-2xl border border-blue-600/60 cursor-pointer flex items-center justify-center gap-4 group hover:from-blue-800 hover:to-cyan-700 transition-all"
         >
-          <span className="text-2xl group-hover:scale-110 transition-transform">馃</span>
+          <span className="text-2xl group-hover:scale-110 transition-transform">🤖</span>
           <span className="text-blue-100 font-bold font-mono group-hover:text-white">
-            杩涘叆Agent娴嬭瘯鍦?(Agent Playground)
+            进入Agent测试场 (Agent Playground)
           </span>
         </motion.div>
 
@@ -193,7 +193,7 @@ export function MainMenu({ onStartLevel }) {
   )
 }
 
-// Badge 缁勪欢绋嶅井鏀逛竴涓嬮厤鑹诧紝閫傚簲閫忔槑鑳屾櫙
+// Badge 组件稍微改一下配色，适应透明背景
 function Badge({ children, color }) {
   const colorMap = {
     white: "bg-white/60 text-slate-700 border-white/50 backdrop-blur-sm",
