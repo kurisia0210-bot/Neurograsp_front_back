@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
-// 👇 请根据你的实际路径检查，如果 MainMenu 在 ui 文件夹，请改为 './components/ui/MainMenu'
+﻿import React, { useState } from 'react'
+// 馃憞 璇锋牴鎹綘鐨勫疄闄呰矾寰勬鏌ワ紝濡傛灉 MainMenu 鍦?ui 鏂囦欢澶癸紝璇锋敼涓?'./components/ui/MainMenu'
 import { MainMenu } from './components/MainMenu'
 import { Level1 } from './components/levels/level1'
-import { Level2 } from './components/levels/Level2'
 import { Playground } from './playground/Playground'
 import { BubbleTestDashboard } from './playground/BubbleTestDashboard'
 import { HoldableComparison } from './playground/HoldableComparison'
@@ -10,30 +9,34 @@ import { AgentPlayground } from './playground/AgentPlayground'
 import LivelyLightingComboPreview from './components/ui/light_test'
 
 export default function App() {
-  // 🧭 路由状态: 'menu' | 'level1' | 'level2' | 'playground' | 'bubble-test'
-  // 🧪 开发模式：直接启动测试页面，改为 'bubble-test'
+  // 馃Л 璺敱鐘舵€? 'menu' | 'level1' | 'level2' | 'playground' | 'bubble-test'
+  // 馃И 寮€鍙戞ā寮忥細鐩存帴鍚姩娴嬭瘯椤甸潰锛屾敼涓?'bubble-test'
   const [currentScreen, setCurrentScreen] = useState('menu')
 
-  // 🧠 核心修复：智能路由处理函数
-  // 这个函数解决了 Cursor 指出的 "levelplayground" 拼接错误
+  // 馃 鏍稿績淇锛氭櫤鑳借矾鐢卞鐞嗗嚱鏁?
+  // 杩欎釜鍑芥暟瑙ｅ喅浜?Cursor 鎸囧嚭鐨?"levelplayground" 鎷兼帴閿欒
   const handleStartLevel = (levelId) => {
+    if (levelId === 2 || levelId === 'level2' || levelId === 'level2-disabled') {
+      console.info('[App] Level2 is temporarily disabled.')
+      return
+    }
     if (levelId === 'playground') {
-      // 如果是 playground，直接跳转，不要加前缀
+      // 濡傛灉鏄?playground锛岀洿鎺ヨ烦杞紝涓嶈鍔犲墠缂€
       setCurrentScreen('playground')
     } else if (levelId === 'agent-playground') {
-      // 如果是 agent-playground，直接跳转
+      // 濡傛灉鏄?agent-playground锛岀洿鎺ヨ烦杞?
       setCurrentScreen('agent-playground')
     } else {
-      // 如果是数字关卡 (1, 2)，加上前缀变成 'level1', 'level2'
+      // 濡傛灉鏄暟瀛楀叧鍗?(1, 2)锛屽姞涓婂墠缂€鍙樻垚 'level1', 'level2'
       setCurrentScreen(`level${levelId}`)
     }
   }
 
   return (
-    // 关键点：w-full h-screen overflow-hidden 确保不会出现双滚动条
+    // 鍏抽敭鐐癸細w-full h-screen overflow-hidden 纭繚涓嶄細鍑虹幇鍙屾粴鍔ㄦ潯
     <div className="w-full h-screen font-sans overflow-hidden bg-slate-50">
       
-      {/* 🧪 开发者快捷按钮 */}
+      {/* 馃И 寮€鍙戣€呭揩鎹锋寜閽?*/}
       {currentScreen === 'menu' && (
         <div style={{ position: 'fixed', bottom: '20px', right: '20px', display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 9999 }}>
           <button
@@ -49,7 +52,7 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(52, 152, 219, 0.4)'
             }}
           >
-            🤖 Agent Playground
+            馃 Agent Playground
           </button>
           <button
             onClick={() => setCurrentScreen('holdable-comparison')}
@@ -64,7 +67,7 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(155, 89, 182, 0.4)'
             }}
           >
-            🔄 Holdable对比测试
+            馃攧 Holdable瀵规瘮娴嬭瘯
           </button>
           <button
             onClick={() => setCurrentScreen('bubble-test')}
@@ -79,7 +82,7 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(231, 76, 60, 0.4)'
             }}
           >
-            🧪 Bubble Test
+            馃И Bubble Test
           </button>
           <button
             onClick={() => setCurrentScreen('light-test')}
@@ -94,14 +97,14 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(243, 156, 18, 0.4)'
             }}
           >
-            💡 Light Test
+            馃挕 Light Test
           </button>
         </div>
       )}
       
-      {/* 🛑 重点检查这里！
-         你之前的代码可能不小心删掉了 `{currentScreen === 'menu' && ...}` 这层包裹。
-         必须有这个判断，菜单才会在进入游戏后消失。
+      {/* 馃洃 閲嶇偣妫€鏌ヨ繖閲岋紒
+         浣犱箣鍓嶇殑浠ｇ爜鍙兘涓嶅皬蹇冨垹鎺変簡 `{currentScreen === 'menu' && ...}` 杩欏眰鍖呰９銆?
+         蹇呴』鏈夎繖涓垽鏂紝鑿滃崟鎵嶄細鍦ㄨ繘鍏ユ父鎴忓悗娑堝け銆?
       */}
       {currentScreen === 'menu' && (
         <MainMenu onStartLevel={handleStartLevel} />
@@ -126,10 +129,10 @@ export default function App() {
           }}
         >
           <div>
-            © {new Date().getFullYear()} 王俊鹏 版权所有
+            漏 {new Date().getFullYear()} 鐜嬩繆楣?鐗堟潈鎵€鏈?
           </div>
           <div>
-            未经书面许可，禁止对本项目的全部或部分内容进行复制、转载、修改、反向工程或商业使用。
+            鏈粡涔﹂潰璁稿彲锛岀姝㈠鏈」鐩殑鍏ㄩ儴鎴栭儴鍒嗗唴瀹硅繘琛屽鍒躲€佽浆杞姐€佷慨鏀广€佸弽鍚戝伐绋嬫垨鍟嗕笟浣跨敤銆?
           </div>
           <div style={{ marginTop: '4px' }}>
             <a 
@@ -138,42 +141,38 @@ export default function App() {
               rel="noopener noreferrer"
               style={{ color: '#3b82f6', textDecoration: 'none' }}
             >
-              浙ICP备2026009520号
+              娴橧CP澶?026009520鍙?
             </a>
           </div>
         </div>
       )}
 
-      {/* 关卡路由 */}
+      {/* 鍏冲崱璺敱 */}
       {currentScreen === 'level1' && (
         <Level1 onBack={() => setCurrentScreen('menu')} />
       )}
       
-      {currentScreen === 'level2' && (
-        <Level2 onBack={() => setCurrentScreen('menu')} />
-      )}
-      
-      {/* 试验场路由 */}
+      {/* 璇曢獙鍦鸿矾鐢?*/}
       {currentScreen === 'playground' && (
         <Playground onBack={() => setCurrentScreen('menu')} />
       )}
 
-      {/* 🧪 Bubble 测试仪表盘 */}
+      {/* 馃И Bubble 娴嬭瘯浠〃鐩?*/}
       {currentScreen === 'bubble-test' && (
         <BubbleTestDashboard onBack={() => setCurrentScreen('menu')} />
       )}
 
-      {/* 🔄 Holdable对比测试 */}
+      {/* 馃攧 Holdable瀵规瘮娴嬭瘯 */}
       {currentScreen === 'holdable-comparison' && (
         <HoldableComparison onBack={() => setCurrentScreen('menu')} />
       )}
 
-      {/* 🤖 Agent Playground */}
+      {/* 馃 Agent Playground */}
       {currentScreen === 'agent-playground' && (
         <AgentPlayground onBack={() => setCurrentScreen('menu')} />
       )}
 
-      {/* 💡 Light Test */}
+      {/* 馃挕 Light Test */}
       {currentScreen === 'light-test' && (
         <LivelyLightingComboPreview onBack={() => setCurrentScreen('menu')} />
       )}
@@ -181,3 +180,4 @@ export default function App() {
     </div>
   )
 }
+

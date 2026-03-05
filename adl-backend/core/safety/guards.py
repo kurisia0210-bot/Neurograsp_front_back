@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -6,7 +6,7 @@ import os
 import re
 from typing import Deque, Dict, List, Optional, Set, Tuple
 
-from core.pipeline.common_v2 import make_action
+from core.pipeline.common import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
 from core.runtime.task_facts import get_agent_holding, get_agent_location, get_object_state_relation
 from schema.payload import ActionPayload, ObservationPayload
@@ -274,9 +274,9 @@ class StateStagnationGuard:
 
 
 def build_state_stagnation_guard_from_env() -> StateStagnationGuard:
-    window = int(os.getenv("REASONING_V2_STAGNATION_WINDOW", "4"))
-    override = os.getenv("REASONING_V2_STAGNATION_OVERRIDE", "THINK").strip().upper()
-    max_keys = int(os.getenv("REASONING_V2_STAGNATION_MAX_KEYS", "256"))
+    window = int(os.getenv("REASONING_STAGNATION_WINDOW", "4"))
+    override = os.getenv("REASONING_STAGNATION_OVERRIDE", "THINK").strip().upper()
+    max_keys = int(os.getenv("REASONING_STAGNATION_MAX_KEYS", "256"))
     return StateStagnationGuard(window=window, override_type=override, max_keys=max_keys)
 
 
@@ -286,3 +286,7 @@ __all__ = [
     "StateStagnationGuard",
     "build_state_stagnation_guard_from_env",
 ]
+
+
+
+

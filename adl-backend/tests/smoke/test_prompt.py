@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,14 +14,14 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from core.reasoning_v1 import ReasoningEngine
+from core.pipeline.proposer.prompt_builder import LLMProposerPromptBuilder
 from schema.payload import AgentSelfState, ObservationPayload, VisibleObject
 
 
 async def main() -> None:
-    engine = ReasoningEngine()
+    builder = LLMProposerPromptBuilder()
     obs = ObservationPayload(
-        timestamp=1234567890.0,
+        timestamp=time.time(),
         session_id="test",
         episode_id=1,
         step_id=1,
@@ -32,7 +33,7 @@ async def main() -> None:
         global_task="Put red cube in fridge",
     )
 
-    messages = await engine._construct_game1_prompt(obs)
+    messages = builder.build_messages(obs)
     print("=" * 60)
     print("SYSTEM PROMPT:")
     print(messages[0]["content"][:300])

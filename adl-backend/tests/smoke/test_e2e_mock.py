@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import os
 import sys
 from pathlib import Path
 
-# Set mock mode before importing reasoning_v1 -> llm_client.
+# Set mock mode before importing reasoning pipeline -> llm_client.
 os.environ["LLM_MODE"] = "mock"
 os.environ["LLM_MOCK_SCENARIO"] = "valid_json"
 
@@ -18,7 +18,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from core.reasoning_v1 import analyze_and_propose
+from core.reasoning import analyze_and_propose
 from schema.payload import AgentSelfState, ObservationPayload, VisibleObject
 
 

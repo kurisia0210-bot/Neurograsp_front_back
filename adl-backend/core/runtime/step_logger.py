@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -31,7 +31,6 @@ def _safe_action(action: Any) -> Dict[str, Any]:
         "target_poi": _enum_to_value(getattr(action, "target_poi", None)),
         "target_item": _enum_to_value(getattr(action, "target_item", None)),
         "interaction_type": _enum_to_value(getattr(action, "interaction_type", None)),
-        "target_length": getattr(action, "target_length", None),
         "content": getattr(action, "content", ""),
     }
 
@@ -146,3 +145,4 @@ def emit_step_summary(
             "result": summary["output"]["execution_result"],
         }
         print("[StepTrace] " + json.dumps(trace, ensure_ascii=False, separators=(",", ":")))
+

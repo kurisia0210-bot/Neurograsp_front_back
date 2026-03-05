@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from dataclasses import dataclass
@@ -31,7 +31,7 @@ class GoalEvalResult:
 
 class GoalEvaluator:
     """
-    MVP evaluator for deterministic "done" checks in v2.
+    MVP evaluator for deterministic "done" checks.
 
     Supported goals:
     - MOVE_TO(target_poi)
@@ -193,3 +193,4 @@ class GoalEvaluator:
         if keep_space:
             return t
         return t.replace(" ", "_")
+

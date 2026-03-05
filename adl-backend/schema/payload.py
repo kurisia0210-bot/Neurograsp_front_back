@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -19,10 +19,6 @@ class AgentActionType(str, Enum):
     SPEAK = "SPEAK"
     IDLE = "IDLE"
     FINISH = "FINISH"
-
-    # Level 2 (Phone Game)
-    ADJUST_DIFFICULTY = "ADJUST_DIFFICULTY"
-    AUTO_PASS = "AUTO_PASS"
 
 
 class ItemName(str, Enum):
@@ -164,13 +160,6 @@ class ActionPayload(BaseModel):
         description="Specific intent for INTERACT"
     )
 
-    target_length: Optional[int] = Field(
-        None,
-        ge=3,
-        le=11,
-        description="Target phone number length (for ADJUST_DIFFICULTY)"
-    )
-
     content: str = Field(..., description="Reasoning/explanation text")
 
 
@@ -240,3 +229,5 @@ class AgentStepResponse(BaseModel):
 
 # Resolve forward references used by ObservationPayload.last_action
 ObservationPayload.model_rebuild()
+
+

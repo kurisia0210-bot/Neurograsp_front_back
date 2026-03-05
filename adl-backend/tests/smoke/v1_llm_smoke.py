@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import asyncio
@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core.pipeline.proposer.llm import LLMProposer
 from schema.payload import ObservationPayload
 
 
@@ -53,15 +54,12 @@ async def _run_case(mode: str, scenario: Optional[str], *, step_id: int, strict_
         del os.environ["LLM_MOCK_SCENARIO"]
 
     import service.llm_client as llm_client
-    import core.reasoning_v1 as reasoning_v1
 
     importlib.reload(llm_client)
-    importlib.reload(reasoning_v1)
 
-    engine = reasoning_v1.ReasoningEngine()
+    proposer = LLMProposer()
     obs = _make_obs(step_id=step_id)
-    messages = await engine._construct_game1_prompt(obs)
-    action = await engine._call_llm_and_parse(obs, messages)
+    action = await proposer.propose(obs)
 
     case = f"{mode}:{scenario or '-'}"
     action_type = str(action.type)
@@ -89,7 +87,6 @@ async def _run_case(mode: str, scenario: Optional[str], *, step_id: int, strict_
             expected="type=THINK and content starts with 'Invalid JSON from LLM'",
         )
 
-    # deepseek mode
     api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
     if not api_key and not strict_deepseek:
         return SmokeResult(
@@ -101,7 +98,7 @@ async def _run_case(mode: str, scenario: Optional[str], *, step_id: int, strict_
             expected="skip when API key is missing",
         )
 
-    passed = action_type in {"MOVE_TO", "INTERACT", "THINK", "IDLE", "FINISH", "SPEAK"}
+    passed = action_type in {"MOVE_TO", "INTERACT", "THINK", "IDLE", "SPEAK"}
     return SmokeResult(
         case=case,
         passed=passed,
@@ -127,7 +124,7 @@ async def _main_async(strict_deepseek: bool) -> int:
         )
         step_id += 1
 
-    print("[V1LLMSmoke]")
+    print("[LLMSmoke]")
     for r in results:
         state = "PASS" if r.passed else "FAIL"
         print(
@@ -141,7 +138,7 @@ async def _main_async(strict_deepseek: bool) -> int:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="V1 LLM chain smoke test.")
+    parser = argparse.ArgumentParser(description="LLM proposer smoke test.")
     parser.add_argument(
         "--strict-deepseek",
         action="store_true",
@@ -161,4 +158,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

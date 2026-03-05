@@ -10,7 +10,7 @@ from schema.payload import ObservationPayload
 
 class LLMProposerPromptBuilder:
     """
-    Builds structured prompt messages for the v2 LLM proposer.
+    Builds structured prompt messages for the LLM proposer.
 
     Responsibilities:
     1. Convert `ObservationPayload` into an LLM-friendly context block.
@@ -28,7 +28,7 @@ class LLMProposerPromptBuilder:
     DEFAULT_SYSTEM_PROMPT = (
         "You are a safe embodied agent planner. "
         "Output only one JSON object. "
-        "Schema keys: type, target_poi, target_item, interaction_type, target_length, content. "
+        "Schema keys: type, target_poi, target_item, interaction_type, content. "
         "Allowed type: MOVE_TO, INTERACT, THINK, IDLE, SPEAK. "
         "Allowed target_poi: table_center, fridge_zone, stove_zone. "
         "Allowed target_item: red_cube, half_cube_left, half_cube_right, fridge_main, fridge_door, stove, table_surface. "
@@ -173,3 +173,5 @@ class LLMProposerPromptBuilder:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+

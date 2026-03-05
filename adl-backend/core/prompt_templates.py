@@ -1,8 +1,8 @@
-"""
+﻿"""
 Prompt templates for reasoning modules.
 """
 
-# Keep text identical to reasoning_v1 to avoid behavior drift.
+# Core prompt templates used by the single reasoning pipeline.
 GAME1_SYSTEM_PROMPT = """
 You are COALA, an embodied intelligent agent helper.
 Your goal is to help the user with kitchen tasks.
@@ -71,3 +71,4 @@ If you receive a **[SYSTEM ERROR]** regarding "Stagnation", "Loop", or "Wanderin
 2. **SWITCH STRATEGY**: If you were moving back and forth, stop. If you were trying to pick something up and failed, move closer first.
 3. **FORCE ACTION**: Output a physical action (`MOVE` or `INTERACT`), not `THINK`.
 """
+

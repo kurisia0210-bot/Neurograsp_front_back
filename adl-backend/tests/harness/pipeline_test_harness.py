@@ -1,10 +1,9 @@
-"""
-Unified pipeline test harness for Reasoning v2.
+﻿"""
+Unified pipeline test harness for the single reasoning pipeline.
 
 Usage:
     python pipeline_test_harness.py
-    python pipeline_test_harness.py --proposer v1
-    python pipeline_test_harness.py --proposer llm
+        python pipeline_test_harness.py --proposer llm
     python pipeline_test_harness.py --proposer mock --mock-script ./golden/mock_script.json
     python pipeline_test_harness.py --json
 """
@@ -27,7 +26,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from core.reasoning_v2 import LLMProposer, MockProposer, ReasoningV2Pipeline, V1Proposer
+from core.reasoning_pipeline import LLMProposer, MockProposer, ReasoningPipeline
 from core.pipeline.proposer.prompt_builder import LLMProposerPromptBuilder
 from core.pipeline.proposer.response_parser import LLMProposerResponseParser
 from schema.payload import ActionPayload, ObservationPayload
@@ -70,7 +69,7 @@ class PipelineTestHarness:
         repeat: int = 20,
         warmup: int = 3,
     ) -> None:
-        self.pipeline = ReasoningV2Pipeline(proposer=self._build_proposer(proposer, mock_script))
+        self.pipeline = ReasoningPipeline(proposer=self._build_proposer(proposer, mock_script))
         self.repeat = max(1, int(repeat))
         self.warmup = max(0, int(warmup))
         self._custom_tests: Dict[str, Callable[[], Awaitable[ComponentTestResult]]] = {}
@@ -82,8 +81,6 @@ class PipelineTestHarness:
 
     def _build_proposer(self, proposer: str, mock_script: Optional[str]):
         proposer_norm = proposer.strip().lower()
-        if proposer_norm == "v1":
-            return V1Proposer()
         if proposer_norm == "llm":
             return LLMProposer()
         return MockProposer(script_path=mock_script)
@@ -180,7 +177,7 @@ class PipelineTestHarness:
         started = time.perf_counter()
         name = "stage3_route"
         try:
-            act_pipeline = ReasoningV2Pipeline(
+            act_pipeline = ReasoningPipeline(
                 proposer=self._build_proposer("mock", None),
                 execution_mode="ACT",
             )
@@ -331,7 +328,7 @@ class PipelineTestHarness:
         started = time.perf_counter()
         name = "instruct_adapter_speak_output"
         try:
-            instruct_pipeline = ReasoningV2Pipeline(
+            instruct_pipeline = ReasoningPipeline(
                 proposer=self._build_proposer("mock", None),
                 execution_mode="INSTRUCT",
             )
@@ -369,7 +366,7 @@ class PipelineTestHarness:
         started = time.perf_counter()
         name = "complex_put_in_sequence"
         try:
-            act_pipeline = ReasoningV2Pipeline(
+            act_pipeline = ReasoningPipeline(
                 proposer=self._build_proposer("mock", None),
                 execution_mode="ACT",
             )
@@ -693,11 +690,11 @@ def _print_human_readable(results: List[ComponentTestResult]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Reasoning v2 pipeline component tests.")
+    parser = argparse.ArgumentParser(description="Run reasoning pipeline component tests.")
     parser.add_argument(
         "--proposer",
         default="mock",
-        choices=["mock", "v1", "llm"],
+        choices=["mock", "llm"],
         help="Which proposer strategy to test.",
     )
     parser.add_argument(
@@ -749,3 +746,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
