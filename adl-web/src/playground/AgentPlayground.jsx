@@ -16,6 +16,7 @@ import {
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
+import { createAgentExecutionAdapter } from '../components/game/core/AgentExecutionAdapter'
 import { TmpTable } from '../components/TmpTable'
 import { TmpHuman } from '../components/TmpHuman'
 
@@ -177,8 +178,7 @@ export function AgentPlayground({ onBack }) {
       }
     },
     getWorldFacts: worldStateManager.getWorldFacts,
-    getWorldState: worldStateManager.getWorldState,
-    executeWorldAction: worldStateManager.executeWorldAction
+    executeWorldAction: createAgentExecutionAdapter(worldStateManager)
   })
   const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
 
@@ -320,7 +320,6 @@ export function AgentPlayground({ onBack }) {
         <TmpHuman position={agentVisualPosition} />
 
         <GameFridge
-          doorAngle={worldStateManager.fridgeDoorAngle || 0}
           isOpen={worldStateManager.fridgeOpen}
           onToggleDoor={worldStateManager.toggleFridgeDoor}
           dropCenter={FRIDGE_MAIN_DROP_CENTER}
