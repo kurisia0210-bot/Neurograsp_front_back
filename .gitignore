@@ -34,3 +34,4 @@ yarn-error.log*
 # Legacy / Backup Files
 # ==========================
 adl-backend/legacy/
+adl-web/src/legacy/
