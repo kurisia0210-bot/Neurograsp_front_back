@@ -29,9 +29,3 @@ yarn-error.log*
 # ==========================
 .vscode/
 .idea/
-
-# ==========================
-# Legacy / Backup Files
-# ==========================
-adl-backend/legacy/
-adl-web/src/legacy/

@@ -52,9 +52,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8001, help="Server port (default: 8001)")
 
-    parser.add_argument("--proposer", choices=["mock", "llm"], help="Reasoning proposer strategy")
-    parser.add_argument("--mode", choices=["INSTRUCT", "ACT"], help="Reasoning execution mode")
-    parser.add_argument("--mock-script", help="Path to mock script json")
+    parser.add_argument("--pipeline", choices=["v1", "v2"], help="Reasoning pipeline")
+    parser.add_argument("--proposer", choices=["mock", "v1", "llm"], help="V2 proposer strategy")
+    parser.add_argument("--mode", choices=["INSTRUCT", "ACT"], help="V2 execution mode")
+    parser.add_argument("--mock-script", help="Path to V2 mock script json")
     parser.add_argument("--llm-mode", choices=["mock", "deepseek", "disabled"], help="LLM runtime mode")
     parser.add_argument(
         "--llm-mock-scenario",
@@ -91,9 +92,10 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _apply_cli_env(args: argparse.Namespace) -> None:
-    _set_env_if_provided("REASONING_PROPOSER", args.proposer)
-    _set_env_if_provided("REASONING_EXECUTION_MODE", args.mode)
-    _set_env_if_provided("REASONING_MOCK_SCRIPT", args.mock_script)
+    _set_env_if_provided("REASONING_PIPELINE", args.pipeline)
+    _set_env_if_provided("REASONING_V2_PROPOSER", args.proposer)
+    _set_env_if_provided("REASONING_V2_EXECUTION_MODE", args.mode)
+    _set_env_if_provided("REASONING_V2_MOCK_SCRIPT", args.mock_script)
     _set_env_if_provided("LLM_MODE", args.llm_mode)
     _set_env_if_provided("LLM_MOCK_SCENARIO", args.llm_mock_scenario)
 

@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Optional, Tuple
 
-from core.pipeline.common import make_action
+from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry, GoalSpec
 from schema.payload import ActionPayload, ObservationPayload
 
@@ -29,7 +29,7 @@ class _PlanState:
 
 class ComplexActionPlanner:
     """
-    Deterministic macro-to-atomic decomposer.
+    Deterministic macro-to-atomic decomposer for v2.
 
     Current MVP scope:
     - PUT_IN(item, container)
@@ -215,5 +215,3 @@ class ComplexActionPlanner:
 
 
 __all__ = ["AtomicActionSpec", "ComplexActionPlanner"]
-
-

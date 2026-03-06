@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any, Dict, Optional, Set, Tuple
 
-from core.pipeline.common import make_action
+from core.pipeline.common_v2 import make_action
 from schema.payload import ActionPayload, ObservationPayload
 
 
@@ -90,7 +90,7 @@ class LLMProposerResponseParser:
         return text
 
     def _normalize_payload(self, payload_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Normalize action type, target aliases, and interaction aliases."""
+        """Normalize action type, target aliases, interaction aliases, and target_length."""
         raw_type = payload_data.get("type")
         if raw_type not in (None, ""):
             type_key = self._to_key(raw_type)
@@ -120,6 +120,15 @@ class LLMProposerResponseParser:
                 interaction_key, interaction_key.upper()
             )
 
+        target_length = payload_data.get("target_length")
+        if isinstance(target_length, str) and target_length.strip().isdigit():
+            payload_data["target_length"] = int(target_length.strip())
+            target_length = payload_data["target_length"]
+        if isinstance(target_length, int) and not (3 <= target_length <= 11):
+            payload_data.pop("target_length", None)
+        elif target_length is not None and not isinstance(target_length, int):
+            payload_data.pop("target_length", None)
+
         return payload_data
 
     def parse_to_action(self, obs: ObservationPayload, raw_content: str) -> ActionPayload:
@@ -139,6 +148,7 @@ class LLMProposerResponseParser:
                 "target_poi",
                 "target_item",
                 "interaction_type",
+                "target_length",
                 "content",
             }
             payload_data = {k: v for k, v in data.items() if k in allowed}
@@ -180,16 +190,12 @@ class LLMProposerResponseParser:
 
         except json.JSONDecodeError as exc:
             preview = raw_content[:300].replace("\n", "\\n")
-            print(f"[Reasoning][LLMProposer] JSON ERROR: {exc}")
-            print(f"[Reasoning][LLMProposer] RAW: {preview}")
+            print(f"[ReasoningV2][LLMProposer] JSON ERROR: {exc}")
+            print(f"[ReasoningV2][LLMProposer] RAW: {preview}")
             return make_action(obs, type="THINK", content=f"Invalid JSON from LLM: {str(exc)[:120]}")
 
         except Exception as exc:
             preview = raw_content[:300].replace("\n", "\\n")
-            print(f"[Reasoning][LLMProposer] PARSE ERROR: {exc}")
-            print(f"[Reasoning][LLMProposer] RAW: {preview}")
+            print(f"[ReasoningV2][LLMProposer] PARSE ERROR: {exc}")
+            print(f"[ReasoningV2][LLMProposer] RAW: {preview}")
             return make_action(obs, type="THINK", content=f"LLM parse error: {str(exc)[:120]}")
-
-
-
-

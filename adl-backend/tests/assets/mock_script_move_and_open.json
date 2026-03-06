@@ -1,0 +1,18 @@
+[
+  {
+    "type": "MOVE_TO",
+    "target_poi": "fridge_zone",
+    "content": "AssetScript: move to fridge zone."
+  },
+  {
+    "type": "INTERACT",
+    "target_item": "fridge_door",
+    "interaction_type": "OPEN",
+    "content": "AssetScript: open fridge door."
+  },
+  {
+    "type": "THINK",
+    "content": "AssetScript: wait for next step."
+  }
+]
+

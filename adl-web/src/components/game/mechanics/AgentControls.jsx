@@ -14,7 +14,7 @@ import React from 'react'
  * @param {boolean} props.autoLoop - 是否自动循环
  * @param {string} props.userInstruction - 用户指令
  * @param {function} props.setUserInstruction - 设置用户指令回调
- * @param {function} props.onReadInitialSnapshot - Read initial world snapshot callback (optional)
+ * @param {function} props.onTestArrow - 测试箭头动画回调（可选）
  * @param {string} props.className - 自定义类名
  */
 export function AgentControls({ 
@@ -25,7 +25,7 @@ export function AgentControls({
   autoLoop,
   userInstruction,
   setUserInstruction,
-  onReadInitialSnapshot,
+  onTestArrow,
   className = ""
 }) {
   return (
@@ -59,12 +59,12 @@ export function AgentControls({
         >
           RESET
         </button>
-        {onReadInitialSnapshot && (
+        {onTestArrow && (
           <button 
-            onClick={onReadInitialSnapshot}
+            onClick={onTestArrow}
             className="px-6 py-2 bg-purple-600 text-white font-bold rounded shadow-lg hover:bg-purple-700 transition-colors"
           >
-            READ SNAPSHOT
+            测试箭头
           </button>
         )}
       </div>

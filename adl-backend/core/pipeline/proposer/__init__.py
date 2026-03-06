@@ -1,5 +1,7 @@
-﻿from .llm import LLMProposer
+from .llm import LLMProposer
 from .mock import MockProposer
 from .protocol import Proposer
+from .v1 import V1Proposer
 
-__all__ = ["Proposer", "LLMProposer", "MockProposer"]
+__all__ = ["Proposer", "V1Proposer", "LLMProposer", "MockProposer"]
+

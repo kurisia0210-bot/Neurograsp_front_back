@@ -1,18 +1,18 @@
 ﻿"""
-Reasoning pipeline (post-processing pipeline).
+Reasoning v2 (post-processing pipeline).
 
-Goals:
+P2 goals:
 - Keep proposer/guard/route boundaries explicit.
 - Keep behavior rollback-friendly.
 - Add deterministic FinishGuard so completion is system-decided.
 
 Runtime switches:
-- REASONING_PROPOSER=mock (default) | llm
-- REASONING_MOCK_SCRIPT=<json_file_path>  # optional for golden tests
-- REASONING_STAGNATION_WINDOW=4           # state stagnation window (N)
-- REASONING_STAGNATION_OVERRIDE=THINK|SPEAK
-- REASONING_EXECUTION_MODE=INSTRUCT(default)|ACT
-- REASONING_MACRO_PLANNER=auto(default)|always|never
+- REASONING_V2_PROPOSER=mock (default) | v1 | llm
+- REASONING_V2_MOCK_SCRIPT=<json_file_path>  # optional for golden tests
+- REASONING_V2_STAGNATION_WINDOW=4            # state stagnation window (N)
+- REASONING_V2_STAGNATION_OVERRIDE=THINK|SPEAK
+- REASONING_V2_EXECUTION_MODE=INSTRUCT(default)|ACT
+- REASONING_V2_MACRO_PLANNER=auto(default)|always|never
 """
 
 from __future__ import annotations
@@ -20,22 +20,22 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from core.pipeline.adapters import InstructAdapter
-from core.pipeline.common import make_action
-from core.pipeline.complex_actions import ComplexActionPlanner
-from core.safety.guards import (
+from core.pipeline.adapters_v2 import InstructAdapter
+from core.pipeline.common_v2 import make_action
+from core.pipeline.complex_actions_v2 import ComplexActionPlanner
+from core.safety.guards_v2 import (
     FinishGuard,
     GuardCheckResult,
     StateStagnationGuard,
     build_state_stagnation_guard_from_env,
 )
-from core.pipeline.proposers import LLMProposer, MockProposer, Proposer, build_proposer_from_env
+from core.pipeline.proposers_v2 import LLMProposer, MockProposer, Proposer, V1Proposer, build_proposer_from_env
 from schema.payload import ActionPayload, ObservationPayload
 
 
-class ReasoningPipeline:
+class ReasoningV2Pipeline:
     """
-    Minimal pipeline:
+    P2 minimal pipeline:
     0) finish_guard(obs)           # deterministic completion short-circuit
     1) proposal = complex planner OR proposer.propose(obs)
     2) guard_check(proposal, obs)  # noop + state stagnation guard
@@ -58,15 +58,14 @@ class ReasoningPipeline:
         self._instruct_adapter = instruct_adapter or InstructAdapter()
         self._complex_action_planner = complex_action_planner or ComplexActionPlanner()
 
-        mode_raw = (execution_mode or os.getenv("REASONING_EXECUTION_MODE", "INSTRUCT")).strip().upper()
+        mode_raw = (execution_mode or os.getenv("REASONING_V2_EXECUTION_MODE", "INSTRUCT")).strip().upper()
         self._execution_mode = "INSTRUCT" if mode_raw == "INSTRUCT" else "ACT"
-
-        planner_mode_raw = (macro_planner_mode or os.getenv("REASONING_MACRO_PLANNER", "auto")).strip().lower()
+        planner_mode_raw = (macro_planner_mode or os.getenv("REASONING_V2_MACRO_PLANNER", "auto")).strip().lower()
         if planner_mode_raw in {"auto", "always", "never"}:
             self._macro_planner_mode = planner_mode_raw
         else:
             print(
-                f"[Reasoning] Unknown REASONING_MACRO_PLANNER={planner_mode_raw!r}, fallback to 'auto'"
+                f"[ReasoningV2] Unknown REASONING_V2_MACRO_PLANNER={planner_mode_raw!r}, fallback to 'auto'"
             )
             self._macro_planner_mode = "auto"
 
@@ -89,7 +88,7 @@ class ReasoningPipeline:
             return False
         # auto mode: always try deterministic planner first.
         # ComplexActionPlanner only emits for supported macro goals
-        # (currently OPEN_THEN_PUT_IN), otherwise returns None.
+        # (currently PUT_IN / OPEN_THEN_PUT_IN), otherwise returns None.
         return True
 
     @staticmethod
@@ -111,7 +110,7 @@ class ReasoningPipeline:
         return proposal
 
     async def analyze_and_propose(self, obs: ObservationPayload) -> ActionPayload:
-        print(f"[DEBUG Reasoning] analyze_and_propose: goal_spec={obs.goal_spec}")
+        print(f"[DEBUG ReasoningV2] analyze_and_propose: goal_spec={obs.goal_spec}")
         finish_action = self._finish_guard.check(obs)
         if finish_action is not None:
             if obs.episode_id is not None:
@@ -132,7 +131,7 @@ class ReasoningPipeline:
             self._finish_guard.reset(obs.session_id, int(obs.episode_id))
             self._state_guard.reset(obs.session_id, int(obs.episode_id))
             self._complex_action_planner.reset(obs.session_id, int(obs.episode_id))
-        print(f"[DEBUG Reasoning] final action: {action.type}, content={action.content}")
+        print(f"[DEBUG ReasoningV2] final action: {action.type}, content={action.content}")
         return action
 
     @staticmethod
@@ -141,7 +140,7 @@ class ReasoningPipeline:
         return action_type == "FINISH"
 
 
-_pipeline = ReasoningPipeline()
+_pipeline = ReasoningV2Pipeline()
 
 
 async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
@@ -150,6 +149,7 @@ async def analyze_and_propose(obs: ObservationPayload) -> ActionPayload:
 
 __all__ = [
     "Proposer",
+    "V1Proposer",
     "LLMProposer",
     "MockProposer",
     "build_proposer_from_env",
@@ -158,6 +158,7 @@ __all__ = [
     "StateStagnationGuard",
     "InstructAdapter",
     "ComplexActionPlanner",
-    "ReasoningPipeline",
+    "ReasoningV2Pipeline",
     "analyze_and_propose",
 ]
+

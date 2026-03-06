@@ -1,20 +1,22 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
 import { useAgentSystem } from '../components/game/core/AgentSystem'
+import { DoctorAvatar } from '../components/game/avatar/DoctorAvatar'
 import { NotificationBubble } from '../components/game/items/NotificationBubble'
 import { WholeCube } from '../components/game/mechanics/GameCube'
 import { GameFridge } from '../components/game/mechanics/GameFridge'
 import { ActionTriggerBubble } from '../components/game/mechanics/ActionTriggerBubble'
 import { ActionType } from '../components/game/core/ActionContract'
 import {
-  AgentBrainDashboard
+  AgentBrainDashboard,
+  AgentStatusDisplay
 } from '../components/game/mechanics/AgentBrainDashboard'
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
-import { createWorldFactsReader, createWorldFactsWriter, projectNearbyObjectsTable } from '../components/game/core/worldFacts'
+import { createAgentExecutionAdapter } from '../components/game/core/AgentExecutionAdapter'
 import { TmpTable } from '../components/TmpTable'
 import { TmpHuman } from '../components/TmpHuman'
 
@@ -22,6 +24,7 @@ const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+const DRAG_POSITION_EPSILON = 0.001
 
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
@@ -132,43 +135,9 @@ export function AgentPlayground({ onBack }) {
     ]
   })
 
-  const worldFactsReader = useMemo(() => {
-    return createWorldFactsReader({
-      getAgentState: () => worldStateManager.agentState,
-      getCubes: () => worldStateManager.cubes,
-      getFridgeOpen: () => worldStateManager.fridgeOpen
-    })
-  }, [worldStateManager.agentState, worldStateManager.cubes, worldStateManager.fridgeOpen])
-
-  const worldFactsWriter = useMemo(() => {
-    return createWorldFactsWriter({
-      getAgentState: () => worldStateManager.agentState,
-      getCubes: () => worldStateManager.cubes,
-      getFridgeOpen: () => worldStateManager.fridgeOpen,
-      setAgentLocation: worldStateManager.setAgentLocation,
-      pickUpCube: worldStateManager.pickUpCube,
-      placeCube: worldStateManager.placeCube,
-      toggleFridgeDoor: worldStateManager.toggleFridgeDoor,
-      updateCubePosition: worldStateManager.updateCubePosition
-    })
-  }, [
-    worldStateManager.agentState,
-    worldStateManager.cubes,
-    worldStateManager.fridgeOpen,
-    worldStateManager.setAgentLocation,
-    worldStateManager.pickUpCube,
-    worldStateManager.placeCube,
-    worldStateManager.toggleFridgeDoor,
-    worldStateManager.updateCubePosition
-  ])
-
   const [behaviorLine, setBehaviorLine] = useState('Action: waiting for next step')
+  const [showArrowAnimation, setShowArrowAnimation] = useState(false)
   const [intentHistory, setIntentHistory] = useState([])
-  const [snapshotPreview, setSnapshotPreview] = useState(null)
-  const snapshotTableRows = useMemo(() => {
-    if (!snapshotPreview) return []
-    return projectNearbyObjectsTable(snapshotPreview)
-  }, [snapshotPreview])
   const [actionBubble, setActionBubble] = useState({
     visible: false,
     status: 'NO_INTENT',
@@ -176,18 +145,9 @@ export function AgentPlayground({ onBack }) {
   })
   const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
 
-  const handleReadInitialSnapshot = () => {
-    const snapshot = worldFactsReader.readSnapshot()
-    if (!snapshot) return
-
-    setSnapshotPreview(snapshot)
-    setActionBubble({
-      visible: true,
-      status: 'SUCCESS',
-      message: 'Initial world snapshot loaded'
-    })
-    setBehaviorLine('Action: read initial world snapshot')
-    console.log('[AgentPlayground] Initial world snapshot:', snapshot)
+  const triggerArrowAnimation = () => {
+    setShowArrowAnimation(true)
+    setTimeout(() => setShowArrowAnimation(false), 1500)
   }
 
   const agentSystem = useAgentSystem({
@@ -213,9 +173,12 @@ export function AgentPlayground({ onBack }) {
     },
     onActionExecuted: (action, newState) => {
       console.log('[AgentPlayground] Action executed:', action?.type, newState)
+      if (action?.type === 'MOVE_TO' || action?.type === 'INTERACT') {
+        triggerArrowAnimation()
+      }
     },
-    getWorldFacts: worldFactsReader.readSnapshot,
-    executeWorldAction: worldFactsWriter.executeIntent
+    getWorldFacts: worldStateManager.getWorldFacts,
+    executeWorldAction: createAgentExecutionAdapter(worldStateManager)
   })
   const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
 
@@ -262,7 +225,6 @@ export function AgentPlayground({ onBack }) {
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
     setIntentHistory([])
-    setSnapshotPreview(null)
     setBehaviorLine('Action: waiting for next step')
     setAgentVisualPosition(getVisualTargetPosition('table_center'))
     resetActionBubble()
@@ -286,6 +248,12 @@ export function AgentPlayground({ onBack }) {
     setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
   }
 
+  const getDoctorAvatarStatus = () => {
+    if (agentSystem.isThinking) return 'thinking'
+    if (worldStateManager.agentState.holding) return 'active'
+    return 'idle'
+  }
+
   return (
     <div className="w-full h-full relative bg-[#1e1e1e]">
       {onBack && <BackButton onBack={onBack} />}
@@ -301,6 +269,7 @@ export function AgentPlayground({ onBack }) {
           text={taskLine}
           subText={behaviorLine}
           style={{ transform: 'translateY(-20px)' }}
+          showArrowAnimation={showArrowAnimation}
         />
       </div>
 
@@ -310,7 +279,7 @@ export function AgentPlayground({ onBack }) {
         onTick={agentSystem.tick}
         onToggleAutoLoop={agentSystem.toggleAutoLoop}
         onReset={handleResetAgent}
-        onReadInitialSnapshot={handleReadInitialSnapshot}
+        onTestArrow={triggerArrowAnimation}
         isThinking={agentSystem.isThinking}
         autoLoop={agentSystem.autoLoop}
         userInstruction={agentSystem.userInstruction}
@@ -368,7 +337,7 @@ export function AgentPlayground({ onBack }) {
             onDrag={(newPos) => {
               const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
               if (!Array.isArray(nextPosition)) return
-              worldFactsWriter.updateCubeDragPosition(cube.id, nextPosition)
+              worldStateManager.updateCubePosition(cube.id, nextPosition, DRAG_POSITION_EPSILON)
 
               if (autoSnapLockRef.current) return
               if (cube.state !== 'in_hand') return
@@ -376,7 +345,7 @@ export function AgentPlayground({ onBack }) {
               if (!isInFridgeMainDropZone(nextPosition)) return
 
               autoSnapLockRef.current = true
-              worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              worldStateManager.placeCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
               setActionBubble({
                 visible: true,
                 status: 'SUCCESS',
@@ -386,7 +355,7 @@ export function AgentPlayground({ onBack }) {
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
-              worldFactsWriter.pickCube(cube.id)
+              worldStateManager.pickUpCube(cube.id)
             }}
             onPlace={() => {
               const currentPos = cube.position
@@ -394,9 +363,9 @@ export function AgentPlayground({ onBack }) {
                 Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
 
               if (inFridgeZone) {
-                worldFactsWriter.placeHeldCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
+                worldStateManager.placeCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
               } else {
-                worldFactsWriter.placeHeldCube(cube.id, currentPos, 'on_table')
+                worldStateManager.placeCube(cube.id, currentPos, 'on_table')
               }
             }}
             slicingZonePos={[-3, 0, -0.5]}
@@ -410,6 +379,26 @@ export function AgentPlayground({ onBack }) {
       <div className="absolute top-32 left-4 z-50 w-48">
         <HoldBox holdingItem={worldStateManager.holdingCube?.id} cubes={worldStateManager.cubes} />
       </div>
+
+      <div
+        className="absolute z-50"
+        style={{
+          right: '20px',
+          bottom: '20px',
+          width: '120px',
+          height: '120px'
+        }}
+      >
+        <DoctorAvatar status={getDoctorAvatarStatus()} disableEyeTracking={false} />
+      </div>
+
+      <AgentStatusDisplay
+        agentState={worldStateManager.agentState}
+        userInstruction={agentSystem.userInstruction}
+        isThinking={agentSystem.isThinking}
+        autoLoop={agentSystem.autoLoop}
+        lastAction={agentSystem.lastAction}
+      />
 
       <div className="absolute bottom-4 left-4 z-50 w-[28rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
         <div className="flex items-center justify-between mb-2">
@@ -460,49 +449,6 @@ export function AgentPlayground({ onBack }) {
           )}
         </div>
       </div>
-
-      {snapshotPreview && (
-        <div className="absolute right-4 top-[22rem] z-50 w-[24rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
-          <div className="font-bold text-cyan-300 mb-2">WorldFacts JSON</div>
-          <div className="overflow-y-auto max-h-52">
-            <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
-{JSON.stringify(snapshotPreview, null, 2)}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {snapshotPreview && (
-        <div className="absolute right-4 bottom-4 z-50 w-[24rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
-          <div className="font-bold text-cyan-300 mb-2">WorldFacts Table</div>
-          <div className="overflow-y-auto max-h-52">
-            {snapshotTableRows.length === 0 ? (
-              <div className="text-gray-500">No rows in table projection.</div>
-            ) : (
-              <table className="w-full text-[10px] leading-4 border-collapse">
-                <thead className="text-gray-400">
-                  <tr>
-                    <th className="text-left pb-1 pr-2">id</th>
-                    <th className="text-left pb-1 pr-2">state</th>
-                    <th className="text-left pb-1 pr-2">relation</th>
-                    <th className="text-left pb-1">position</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshotTableRows.map((row) => (
-                    <tr key={row.id} className="border-t border-gray-800">
-                      <td className="py-1 pr-2 align-top break-all">{row.id}</td>
-                      <td className="py-1 pr-2 align-top">{row.state || '-'}</td>
-                      <td className="py-1 pr-2 align-top">{row.relation || '-'}</td>
-                      <td className="py-1 align-top">{Array.isArray(row.position) ? `[${row.position.join(', ')}]` : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

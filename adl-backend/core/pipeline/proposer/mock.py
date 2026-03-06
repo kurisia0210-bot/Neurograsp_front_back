@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
-from core.pipeline.common import make_action
+from core.pipeline.common_v2 import make_action
 from core.goal.goal_registry import GoalRegistry
 from schema.payload import ActionPayload, ObservationPayload
 
@@ -15,7 +15,7 @@ class MockProposer:
     Deterministic proposer for golden tests.
 
     Priority:
-    1) scripted output (if REASONING_MOCK_SCRIPT is valid)
+    1) scripted output (if REASONING_V2_MOCK_SCRIPT is valid)
     2) rule-based fallback
     """
 
@@ -28,19 +28,19 @@ class MockProposer:
             return []
         path = Path(script_path)
         if not path.exists():
-            print(f"[Reasoning] Mock script not found: {script_path!r}, fallback to rules.")
+            print(f"[ReasoningV2] Mock script not found: {script_path!r}, fallback to rules.")
             return []
         try:
             data = json.loads(path.read_text(encoding="utf-8-sig"))
             if not isinstance(data, list):
-                print("[Reasoning] Mock script must be a JSON list, fallback to rules.")
+                print("[ReasoningV2] Mock script must be a JSON list, fallback to rules.")
                 return []
             normalized = [x for x in data if isinstance(x, dict)]
             if not normalized:
-                print("[Reasoning] Mock script is empty, fallback to rules.")
+                print("[ReasoningV2] Mock script is empty, fallback to rules.")
             return normalized
         except Exception as exc:
-            print(f"[Reasoning] Failed to load mock script: {exc}, fallback to rules.")
+            print(f"[ReasoningV2] Failed to load mock script: {exc}, fallback to rules.")
             return []
 
     def _from_script(self, obs: ObservationPayload) -> Optional[ActionPayload]:
@@ -52,7 +52,7 @@ class MockProposer:
         try:
             return make_action(obs, **step_data)
         except Exception as exc:
-            print(f"[Reasoning] Invalid mock script action at idx={index}: {exc}")
+            print(f"[ReasoningV2] Invalid mock script action at idx={index}: {exc}")
             return None
 
     def _find_state(self, obs: ObservationPayload, item_id: str) -> Optional[str]:
@@ -209,7 +209,4 @@ class MockProposer:
         if scripted is not None:
             return scripted
         return self._from_rules(obs)
-
-
-
 

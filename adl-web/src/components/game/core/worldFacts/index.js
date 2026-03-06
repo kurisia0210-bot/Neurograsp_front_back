@@ -1,16 +1,9 @@
 export {
   WORLD_FACTS_VERSION,
-  WORLD_FACT_ENTITY_IDS,
   DEFAULT_AGENT_FACT,
   isPositionTriplet,
-  normalizeAgentFact,
-  createRelation
-} from './WorldFactsOntology'
+  normalizeAgentFact
+} from './WorldFactsContract'
+export { WORLD_FACT_REGISTRY, buildNearbyObjectsFromRegistry } from './WorldFactsRegistry'
+export { buildWorldFacts } from './WorldFactsBuilder'
 
-export {
-  readWorldFactsSnapshot,
-  projectNearbyObjectsTable,
-  createWorldFactsReader
-} from './WorldFactsReader'
-
-export { createWorldFactsWriter } from './WorldFactsWriter'

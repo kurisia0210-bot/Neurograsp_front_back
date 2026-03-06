@@ -4,6 +4,7 @@ import re
 from typing import Any, Dict, Optional
 
 
+# Unified error dictionary: error_code -> {module, severity, description}
 ERROR_DICTIONARY: Dict[str, Dict[str, str]] = {
     "OK": {
         "module": "none",
@@ -19,6 +20,11 @@ ERROR_DICTIONARY: Dict[str, Dict[str, str]] = {
         "module": "reasoning",
         "severity": "ERROR",
         "description": "Unhandled runtime exception in reasoning path.",
+    },
+    "E_REFLEX_BLOCK": {
+        "module": "reflex",
+        "severity": "WARN",
+        "description": "Reflex layer blocked the proposed action.",
     },
     "E_GOAL_AMBIGUOUS": {
         "module": "goal",
@@ -46,6 +52,8 @@ def _failure_type_name(exec_result: Any) -> str:
 
 
 def _parse_watchdog_detail(content: str) -> Dict[str, Optional[str]]:
+    # Expected content shape:
+    # "[SYSTEM ERROR]: ... Rule=ACTION_LOOP. Reason=.... STOP ..."
     rule_match = re.search(r"Rule=([^\.]+)\.", content or "")
     reason_match = re.search(r"Reason=(.+?)\.\s+STOP", content or "")
     return {
@@ -55,12 +63,17 @@ def _parse_watchdog_detail(content: str) -> Dict[str, Optional[str]]:
 
 
 def classify_step_error(intent: Any, exec_result: Any) -> Dict[str, Any]:
+    """
+    Classify step outcome with unified dictionary fields:
+    error_code + module + severity (+ detail / extra).
+    """
     default = ERROR_DICTIONARY["E_UNKNOWN"]
 
     intent_type = getattr(intent, "type", "")
     intent_content = getattr(intent, "content", "") or ""
     success = bool(getattr(exec_result, "success", False))
 
+    # Watchdog override currently manifests as THINK + [SYSTEM ERROR] content.
     if intent_type == "THINK" and "[SYSTEM ERROR]" in intent_content:
         spec = ERROR_DICTIONARY["E_WATCHDOG_STAGNATION"]
         return {
@@ -88,6 +101,8 @@ def classify_step_error(intent: Any, exec_result: Any) -> Dict[str, Any]:
 
     if failure_type == "SCHEMA_ERROR":
         code = "E_REASONING_SCHEMA"
+    elif failure_type == "REFLEX_BLOCK":
+        code = "E_REFLEX_BLOCK"
     elif failure_type == "REASONING_ERROR":
         code = "E_REASONING_RUNTIME"
     elif failure_type == "GOAL_AMBIGUOUS":
@@ -104,3 +119,4 @@ def classify_step_error(intent: Any, exec_result: Any) -> Dict[str, Any]:
         "detail": failure_reason,
         "extra": {"failure_type": failure_type},
     }
+
