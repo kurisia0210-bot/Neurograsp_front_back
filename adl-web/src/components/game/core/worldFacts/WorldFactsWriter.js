@@ -1,5 +1,14 @@
 import { normalizeBackendIntent } from '../ActionContract'
 
+
+// ==========================================
+// CQRS: Command Side (状态写入器 / 物理安检员)
+// Architecture Role: Action Execution & Fact-based Guard
+// 架构角色：整个 3D 引擎的唯一修改入口。
+// 它冷酷无情：不盲信大模型，只根据物理事实决定动作是否成功，并将结果返回给总控。
+// ==========================================
+
+
 // Read current agent state in a safe, stable shape.
 function getSafeAgentState(getAgentState) {
   const state = typeof getAgentState === 'function' ? getAgentState() : null
@@ -11,6 +20,10 @@ function getSafeAgentState(getAgentState) {
 
 // Writer receives world update functions.
 // It executes normalized intents and updates world state.
+// Writer receives world update functions.
+// It executes normalized intents and updates world state.
+// 依赖注入 (DI)：接收底层的物理操作函数，封装成高层的执行器。
+
 export function createWorldFactsWriter({
   getAgentState,
   getCubes,
@@ -68,6 +81,7 @@ export function createWorldFactsWriter({
   }
 
   // Main write entry. Execute one intent and return result.
+  // 核心执行中枢：大模型的所有动作意图 (Intent) 都在这里被解析和执行。
   const executeIntent = (actionPayload) => {
     const normalizedAction = normalizeBackendIntent(actionPayload)
     const actionType = String(normalizedAction?.type || 'INTERACT').toUpperCase()
