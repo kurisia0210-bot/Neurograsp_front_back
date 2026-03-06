@@ -18,7 +18,7 @@ function buildEntitiesMap({ agentState, cubes = [], fridgeOpen = false }) {
   const inferredHolding = inferHoldingFromCubes(cubes)
   const effectiveAgent = {
     id: WORLD_FACT_ENTITY_IDS.AGENT,
-    type: 'agent',
+    type: 'human',
     location: normalizedAgent.location,
     holding: inferredHolding || normalizedAgent.holding || null
   }
@@ -91,6 +91,13 @@ function relationToLegacyText(relation) {
   return `${relation.predicate} ${relation.object}`
 }
 
+function getAgentPositionFromLocation(location) {
+  if (location === 'fridge_zone') return [-2, 0, 1]
+  if (location === 'stove_zone') return [2, 0, 1]
+  if (location === 'table_center') return [1.5, 0, 2]
+  return null
+}
+
 // Legacy projection only.
 // Main storage is entities + relations.
 export function projectNearbyObjectsTable(snapshot) {
@@ -98,14 +105,14 @@ export function projectNearbyObjectsTable(snapshot) {
   const relations = Array.isArray(snapshot?.relations) ? snapshot.relations : []
 
   return Object.values(entities)
-    .filter((entity) => entity.id !== WORLD_FACT_ENTITY_IDS.AGENT)
     .map((entity) => {
       const relation = relations.find((r) => r.subject === entity.id)
+      const isAgent = entity.id === WORLD_FACT_ENTITY_IDS.AGENT
       return {
-        id: entity.id,
-        state: entity.state || 'unknown',
-        relation: relationToLegacyText(relation),
-        position: entity.position || null
+        id: isAgent ? 'human' : entity.id,
+        state: isAgent ? (entity.holding ? `holding:${entity.holding}` : 'idle') : (entity.state || 'unknown'),
+        relation: isAgent ? `at ${entity.location || 'unknown'}` : relationToLegacyText(relation),
+        position: isAgent ? getAgentPositionFromLocation(entity.location) : (entity.position || null)
       }
     })
 }

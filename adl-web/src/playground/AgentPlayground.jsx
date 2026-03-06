@@ -8,21 +8,17 @@ import { WholeCube } from '../components/game/mechanics/GameCube'
 import { GameFridge } from '../components/game/mechanics/GameFridge'
 import { ActionTriggerBubble } from '../components/game/mechanics/ActionTriggerBubble'
 import { ActionType } from '../components/game/core/ActionContract'
-import {
-  AgentBrainDashboard
-} from '../components/game/mechanics/AgentBrainDashboard'
-import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
-import { createWorldFactsReader, createWorldFactsWriter, projectNearbyObjectsTable } from '../components/game/core/worldFacts'
+import { createWorldFactsReader, createWorldFactsWriter } from '../components/game/core/worldFacts'
 import { TmpTable } from '../components/TmpTable'
 import { TmpHuman } from '../components/TmpHuman'
+import { DashboardBooklet } from './DashboardBooklet'
 
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
-
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
   const [x, , z] = position
@@ -165,10 +161,6 @@ export function AgentPlayground({ onBack }) {
   const [behaviorLine, setBehaviorLine] = useState('Action: waiting for next step')
   const [intentHistory, setIntentHistory] = useState([])
   const [snapshotPreview, setSnapshotPreview] = useState(null)
-  const snapshotTableRows = useMemo(() => {
-    if (!snapshotPreview) return []
-    return projectNearbyObjectsTable(snapshotPreview)
-  }, [snapshotPreview])
   const [actionBubble, setActionBubble] = useState({
     visible: false,
     status: 'NO_INTENT',
@@ -286,15 +278,11 @@ export function AgentPlayground({ onBack }) {
     setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
   }
 
+
   return (
     <div className="w-full h-full relative bg-[#1e1e1e]">
       {onBack && <BackButton onBack={onBack} />}
 
-      <AgentBrainDashboard
-        observation={agentSystem.lastObservation}
-        action={agentSystem.lastAction}
-        isThinking={agentSystem.isThinking}
-      />
 
       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
         <NotificationBubble
@@ -407,102 +395,18 @@ export function AgentPlayground({ onBack }) {
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
 
-      <div className="absolute top-32 left-4 z-50 w-48">
-        <HoldBox holdingItem={worldStateManager.holdingCube?.id} cubes={worldStateManager.cubes} />
-      </div>
+      <DashboardBooklet
+        observation={agentSystem.lastObservation}
+        action={agentSystem.lastAction}
+        isThinking={agentSystem.isThinking}
+        intentHistory={intentHistory}
+        onClearHistory={() => setIntentHistory([])}
+        snapshotPreview={snapshotPreview}
+        onRefreshWorldFacts={handleReadInitialSnapshot}
+        holdingItem={worldStateManager.holdingCube?.id}
+        cubes={worldStateManager.cubes}
+      />
 
-      <div className="absolute bottom-4 left-4 z-50 w-[28rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
-        <div className="flex items-center justify-between mb-2">
-          <div className="font-bold text-green-300">History ({intentHistory.length})</div>
-          <button
-            onClick={() => setIntentHistory([])}
-            className="px-2 py-0.5 text-[10px] bg-gray-700 rounded hover:bg-gray-600 transition-colors"
-          >
-            Clear
-          </button>
-        </div>
-        <div className="overflow-y-auto max-h-52 space-y-2">
-          {intentHistory.length === 0 ? (
-            <div className="text-gray-500">No history yet.</div>
-          ) : (
-            intentHistory.map((entry, idx) => (
-              <div key={entry.key} className="bg-gray-900/80 border border-gray-700 rounded p-2">
-                <div className="text-[10px] text-gray-400 mb-1">#{idx + 1} step={entry.step_id ?? '-'}</div>
-                {entry.error && entry.error.error_code !== 'OK' && (
-                  <div className="text-[10px] mb-1 text-red-300">
-                    error={entry.error.error_code} ({entry.error.module}/{entry.error.severity})
-                  </div>
-                )}
-                <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
-{JSON.stringify(
-  {
-    type: entry.type,
-    target_poi: entry.target_poi,
-    target_item: entry.target_item,
-    interaction_type: entry.interaction_type,
-    target_length: entry.target_length,
-    content: entry.content,
-    error: entry.error
-      ? {
-          error_code: entry.error.error_code,
-          module: entry.error.module,
-          severity: entry.error.severity,
-          detail: entry.error.detail
-        }
-      : null
-  },
-  null,
-  2
-)}
-                </pre>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {snapshotPreview && (
-        <div className="absolute right-4 top-[22rem] z-50 w-[24rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
-          <div className="font-bold text-cyan-300 mb-2">WorldFacts JSON</div>
-          <div className="overflow-y-auto max-h-52">
-            <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
-{JSON.stringify(snapshotPreview, null, 2)}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {snapshotPreview && (
-        <div className="absolute right-4 bottom-4 z-50 w-[24rem] max-h-64 bg-black/85 text-gray-200 p-3 rounded-lg border border-gray-600 font-mono text-[11px]">
-          <div className="font-bold text-cyan-300 mb-2">WorldFacts Table</div>
-          <div className="overflow-y-auto max-h-52">
-            {snapshotTableRows.length === 0 ? (
-              <div className="text-gray-500">No rows in table projection.</div>
-            ) : (
-              <table className="w-full text-[10px] leading-4 border-collapse">
-                <thead className="text-gray-400">
-                  <tr>
-                    <th className="text-left pb-1 pr-2">id</th>
-                    <th className="text-left pb-1 pr-2">state</th>
-                    <th className="text-left pb-1 pr-2">relation</th>
-                    <th className="text-left pb-1">position</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshotTableRows.map((row) => (
-                    <tr key={row.id} className="border-t border-gray-800">
-                      <td className="py-1 pr-2 align-top break-all">{row.id}</td>
-                      <td className="py-1 pr-2 align-top">{row.state || '-'}</td>
-                      <td className="py-1 pr-2 align-top">{row.relation || '-'}</td>
-                      <td className="py-1 align-top">{Array.isArray(row.position) ? `[${row.position.join(', ')}]` : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
