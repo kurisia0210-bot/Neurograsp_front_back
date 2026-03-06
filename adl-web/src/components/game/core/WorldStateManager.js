@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react'
-import { buildWorldFacts, isPositionTriplet } from './worldFacts'
+import { useState, useCallback, useMemo, useRef } from 'react'
+import { isPositionTriplet, createWorldFactsReader } from './worldFacts'
 
 // ============================================================================
 // WORLD STATE MANAGER (Simplified for MVP)
@@ -122,16 +122,24 @@ export function useWorldStateManager(options = {}) {
     })
   }, [])
 
+  const setAgentLocation = useCallback((location) => {
+    if (!location || typeof location !== 'string') return false
+    setAgentState((prev) => ({ ...prev, location }))
+    return true
+  }, [])
+
   // ==================== World Facts Interface ====================
-  const getWorldFacts = useCallback(() => {
-    const resolvedAgentState = normalizeAgentState(agentState, cubes)
-    return buildWorldFacts({
-      agentState: resolvedAgentState,
-      cubes,
-      fridgeOpen,
-      timestamp: Date.now() / 1000
+  const worldFactsReader = useMemo(() => {
+    return createWorldFactsReader({
+      getAgentState: () => normalizeAgentState(agentState, cubes),
+      getCubes: () => cubes,
+      getFridgeOpen: () => fridgeOpen
     })
   }, [agentState, cubes, fridgeOpen])
+
+  const getWorldFacts = useCallback(() => {
+    return worldFactsReader.readSnapshot()
+  }, [worldFactsReader])
 
   const resetWorldState = useCallback(() => {
     setFridgeOpen(initialStateRef.current.fridgeOpen)
@@ -150,6 +158,7 @@ export function useWorldStateManager(options = {}) {
     placeCube,
     updateCubePosition,
     toggleFridgeDoor,
+    setAgentLocation,
     getWorldFacts,
     resetWorldState,
     getHoldingCube

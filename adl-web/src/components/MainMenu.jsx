@@ -121,39 +121,6 @@ export function MainMenu({ onStartLevel }) {
           </div>
         </motion.div>
 
-          {/* ============ 卡片 2: 紧急联络 (已解锁) ============ */}
-        <motion.div 
-          variants={itemVariants}
-          whileHover={{ 
-            scale: 1.03, 
-            y: -5, 
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.1)" 
-          }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onStartLevel(2)} // 👈 绑定点击事件
-          // 👇 移除灰色滤镜，改为激活样式
-          className="group relative bg-white/40 backdrop-blur-xl p-8 rounded-3xl shadow-lg border border-white/60 cursor-pointer flex items-center gap-6 overflow-hidden hover:bg-white/50 transition-colors"
-        >
-          {/* 内部高光流 */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-
-          <motion.div 
-            whileHover={{ y: -8, rotate: [0, 5, -5, 0] }}
-            // 改为紫色系图标背景
-            className="relative w-24 h-24 bg-gradient-to-tr from-purple-100/80 to-white/80 rounded-2xl flex items-center justify-center text-5xl shadow-sm backdrop-blur-md"
-          >
-            ☎️
-          </motion.div>
-          
-          <div className="text-left relative z-10">
-            <h3 className="text-2xl font-bold text-slate-800 group-hover:text-purple-700">紧急拨号</h3>
-            <p className="text-slate-600 text-sm mt-2 font-medium">任务：记忆并拨打号码，锻炼精细动作。</p>
-            <div className="mt-4 flex gap-3 flex-wrap">
-              <Badge color="white">🧠 记忆训练</Badge>
-              <Badge color="white">👆 精细控制</Badge>
-            </div>
-          </div>
-        </motion.div>
 
       </motion.div>
 

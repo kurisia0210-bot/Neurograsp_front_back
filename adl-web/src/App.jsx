@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 // 👇 请根据你的实际路径检查，如果 MainMenu 在 ui 文件夹，请改为 './components/ui/MainMenu'
 import { MainMenu } from './components/MainMenu'
 import { Level1 } from './components/levels/level1'
-import { Level2 } from './components/levels/Level2'
 import { Playground } from './playground/Playground'
 import { BubbleTestDashboard } from './playground/BubbleTestDashboard'
 import { HoldableComparison } from './playground/HoldableComparison'
@@ -10,7 +9,7 @@ import { AgentPlayground } from './playground/AgentPlayground'
 import LivelyLightingComboPreview from './components/ui/light_test'
 
 export default function App() {
-  // 🧭 路由状态: 'menu' | 'level1' | 'level2' | 'playground' | 'bubble-test'
+  // 🧭 路由状态: 'menu' | 'level1' | 'playground' | 'bubble-test'
   // 🧪 开发模式：直接启动测试页面，改为 'bubble-test'
   const [currentScreen, setCurrentScreen] = useState('menu')
 
@@ -24,7 +23,7 @@ export default function App() {
       // 如果是 agent-playground，直接跳转
       setCurrentScreen('agent-playground')
     } else {
-      // 如果是数字关卡 (1, 2)，加上前缀变成 'level1', 'level2'
+      // 如果是数字关卡 (1)，加上前缀变成 'level1'
       setCurrentScreen(`level${levelId}`)
     }
   }
@@ -149,9 +148,6 @@ export default function App() {
         <Level1 onBack={() => setCurrentScreen('menu')} />
       )}
       
-      {currentScreen === 'level2' && (
-        <Level2 onBack={() => setCurrentScreen('menu')} />
-      )}
       
       {/* 试验场路由 */}
       {currentScreen === 'playground' && (
