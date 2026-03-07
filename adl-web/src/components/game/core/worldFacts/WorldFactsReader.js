@@ -123,6 +123,10 @@ export function projectNearbyObjectsTable(snapshot) {
 export function readWorldFactsSnapshot({ agentState, cubes = [], fridgeOpen = false, timestamp } = {}) {
   const entities = buildEntitiesMap({ agentState, cubes, fridgeOpen })
   const relations = buildRelationsList({ cubes })
+  const nearbyObjectsForBackend = projectNearbyObjectsTable({
+    entities,
+    relations
+  }).filter((row) => row.id !== 'human')
 
   const snapshot = {
     version: WORLD_FACTS_VERSION,
@@ -139,7 +143,7 @@ export function readWorldFactsSnapshot({ agentState, cubes = [], fridgeOpen = fa
       location: agentEntity.location,
       holding: agentEntity.holding
     },
-    nearby_objects: projectNearbyObjectsTable(snapshot)
+    nearby_objects: nearbyObjectsForBackend
   }
 }
 

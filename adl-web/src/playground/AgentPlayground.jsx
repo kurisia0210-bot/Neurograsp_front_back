@@ -183,7 +183,8 @@ export function AgentPlayground({ onBack }) {
   }
 
   const agentSystem = useAgentSystem({
-    initialTask: 'Put red cube in fridge',
+    initialTask: 'pick red_cube',
+    autoExecuteBackendIntent: false,
     onTickComplete: (response) => {
       if (!response?.intent) return
 
@@ -192,16 +193,24 @@ export function AgentPlayground({ onBack }) {
       const intent = response.intent
       setBehaviorLine(getBehaviorText(intent))
 
-      const triggerResult = toBubbleFromExecution(
-        intent,
-        response?.execution_result,
-        response?.error?.detail || response?.error?.description || null
-      )
-      setActionBubble({
-        visible: true,
-        status: triggerResult.status,
-        message: triggerResult.message
-      })
+      if (response?.manual_required) {
+        setActionBubble({
+          visible: true,
+          status: 'SUCCESS',
+          message: `Expected: ${getActionLabel(intent)} (manual)`
+        })
+      } else {
+        const triggerResult = toBubbleFromExecution(
+          intent,
+          response?.execution_result,
+          response?.error?.detail || response?.error?.description || null
+        )
+        setActionBubble({
+          visible: true,
+          status: triggerResult.status,
+          message: triggerResult.message
+        })
+      }
     },
     onActionExecuted: (action, newState) => {
       console.log('[AgentPlayground] Action executed:', action?.type, newState)
