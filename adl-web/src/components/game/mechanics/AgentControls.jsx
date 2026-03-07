@@ -36,7 +36,7 @@ export function AgentControls({
           value={userInstruction}
           onChange={(e) => setUserInstruction(e.target.value)}
           className="flex-1 bg-transparent text-white outline-none font-mono text-sm"
-          placeholder="输入任务，例如: Put red cube in fridge"
+          placeholder="输入任务，例如: pick red_cube"
         />
       </div>
       <div className="flex gap-4 justify-center">
@@ -110,7 +110,7 @@ export function TaskInput({
   onChange,
   onSubmit,
   exampleTasks = [],
-  placeholder = "Enter a task, e.g. Put red cube in fridge",
+  placeholder = "Enter a task, e.g. pick red_cube",
   disabled = false,
   className = ""
 }) {

@@ -203,7 +203,7 @@ export function Level1({ onBack }) {
   )
 
   const agentSystem = useAgentSystem({
-    initialTask: 'Put red cube in fridge',
+    initialTask: 'pick red_cube',
     getWorldState,
     executeWorldAction,
     onTickComplete: (response) => {
@@ -289,7 +289,7 @@ export function Level1({ onBack }) {
             value={agentSystem.userInstruction}
             onChange={(e) => handleTaskChange(e.target.value)}
             className="bg-transparent text-gray-800 outline-none w-80 text-sm"
-            placeholder="e.g. Put red cube in fridge"
+            placeholder="e.g. pick red_cube"
           />
         </div>
 

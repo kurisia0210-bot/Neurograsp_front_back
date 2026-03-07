@@ -1,29 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 import { resolveGoalSpec as defaultResolveGoalSpec } from './GoalParser'
 import { normalizeBackendIntent } from './ActionContract'
 
-// ============================================================================
-// AGENT SYSTEM CORE HOOK
-// ============================================================================
-// 这是整个Agent系统的核心协调器，负责：
-// 1. 与后端AI大脑通信
-// 2. 管理Agent的思考循环
-// 3. 协调世界状态和动作执行
-// 4. 处理自动循环和手动控制
-// 
-// 设计原则：
-// - 纯协调逻辑，不持有世界状态
-// - 通过回调与WorldStateManager交互
-// - 遵循Constitution：显式状态、纯函数渲染
-// ============================================================================
-
-
-/**
- * 构建默认的世界快照
- * 当无法从WorldStateManager获取状态时使用
- * @returns {Object} 默认世界状态
- */
 function buildFallbackWorldSnapshot() {
   return {
     nearby_objects: [],
@@ -35,16 +14,10 @@ function buildFallbackWorldSnapshot() {
   }
 }
 
-/**
- * 规范化世界快照数据
- * 确保数据结构一致，处理缺失字段
- * @param {Object} rawWorldState - 原始世界状态
- * @returns {Object} 规范化后的世界状态
- */
-
 function normalizeWorldSnapshot(rawWorldState) {
   const worldState = rawWorldState || buildFallbackWorldSnapshot()
   const worldAgent = worldState.agent || {}
+
   return {
     ...worldState,
     nearby_objects: worldState.nearby_objects || [],
@@ -55,10 +28,8 @@ function normalizeWorldSnapshot(rawWorldState) {
   }
 }
 
-/**
- * AgentSystem - orchestration loop only.
- * World business state is owned by WorldStateManager.
- */
+const AgentSystemContext = createContext(null)
+
 export function useAgentSystem({
   onActionExecuted = () => {},
   onTickComplete = () => {},
@@ -66,8 +37,9 @@ export function useAgentSystem({
   getWorldState,
   executeWorldAction,
   resolveGoalSpec: resolveGoalSpecOverride,
-  initialTask = 'Put red cube in fridge',
-  backendUrl = 'http://127.0.0.1:8001/api/tick'
+  initialTask = 'pick red_cube',
+  backendUrl = 'http://127.0.0.1:8001/api/tick',
+  autoExecuteBackendIntent = true
 }) {
   const sessionIdRef = useRef(crypto.randomUUID())
   const episodeIdRef = useRef(null)
@@ -75,20 +47,22 @@ export function useAgentSystem({
 
   const [isThinking, setIsThinking] = useState(false)
   const [autoLoop, setAutoLoop] = useState(false)
+
   const [lastAction, setLastAction] = useState(null)
   const [lastResult, setLastResult] = useState(null)
   const [lastEffects, setLastEffects] = useState([])
   const [lastError, setLastError] = useState(null)
   const [lastObservation, setLastObservation] = useState(null)
   const [lastResponse, setLastResponse] = useState(null)
+
   const [userInstruction, setUserInstruction] = useState(initialTask)
 
   const readWorldSnapshot = useCallback(() => {
-    const rawWorldState = getWorldFacts
-      ? getWorldFacts()
-      : getWorldState
-        ? getWorldState()
-        : buildFallbackWorldSnapshot()
+    const rawWorldState =
+      (typeof getWorldFacts === 'function' && getWorldFacts()) ||
+      (typeof getWorldState === 'function' && getWorldState()) ||
+      buildFallbackWorldSnapshot()
+
     return normalizeWorldSnapshot(rawWorldState)
   }, [getWorldFacts, getWorldState])
 
@@ -102,17 +76,15 @@ export function useAgentSystem({
   }, [])
 
   const perceiveWorld = useCallback(() => {
-    const worldState = readWorldSnapshot()
-    const worldAgent = worldState.agent
+    const worldSnapshot = readWorldSnapshot()
+    const worldAgent = worldSnapshot.agent
 
     stepCounterRef.current += 1
 
     const goalResolver = resolveGoalSpecOverride || defaultResolveGoalSpec
     const parsedGoalSpec = typeof goalResolver === 'function'
-      ? goalResolver(userInstruction, worldAgent, worldState)
+      ? goalResolver(userInstruction, worldAgent, worldSnapshot)
       : null
-
-    const goalSpec = worldState.goal_spec || parsedGoalSpec || null
 
     return {
       session_id: sessionIdRef.current,
@@ -123,9 +95,9 @@ export function useAgentSystem({
         location: worldAgent.location,
         holding: worldAgent.holding
       },
-      nearby_objects: worldState.nearby_objects || [],
+      nearby_objects: worldSnapshot.nearby_objects || [],
       global_task: userInstruction,
-      goal_spec: goalSpec,
+      goal_spec: worldSnapshot.goal_spec || parsedGoalSpec || null,
       last_action: lastAction,
       last_result: lastResult,
       last_effects: lastEffects
@@ -135,12 +107,14 @@ export function useAgentSystem({
   const executeAction = useCallback((actionPayload) => {
     const normalizedAction = normalizeBackendIntent(actionPayload)
     const rawType = String(actionPayload?.type || '').toUpperCase()
+
     if (normalizedAction.type === 'THINK' && rawType !== 'THINK') {
       const executionResult = {
         success: false,
         failure_type: 'INVALID_INTENT',
         failure_reason: normalizedAction.content || 'Invalid intent payload'
       }
+
       setLastEffects([
         {
           key: 'intent.validate',
@@ -150,6 +124,7 @@ export function useAgentSystem({
           detail: executionResult.failure_reason
         }
       ])
+
       return {
         action: normalizedAction,
         agentState: readWorldSnapshot().agent,
@@ -160,13 +135,8 @@ export function useAgentSystem({
     const beforeSnapshot = readWorldSnapshot()
     const beforeAgent = beforeSnapshot.agent
     const effects = []
-    let executionResult = {
-      success: true,
-      failure_type: null,
-      failure_reason: ''
-    }
 
-    const runWorldExecution = () => {
+    const runWorldExecutor = () => {
       if (typeof executeWorldAction !== 'function') {
         return {
           success: false,
@@ -174,6 +144,7 @@ export function useAgentSystem({
           failure_reason: 'executeWorldAction is not configured'
         }
       }
+
       const worldResult = executeWorldAction(normalizedAction) || {}
       return {
         success: Boolean(worldResult.success),
@@ -182,18 +153,22 @@ export function useAgentSystem({
       }
     }
 
+    let executionResult = {
+      success: true,
+      failure_type: null,
+      failure_reason: ''
+    }
+
     if (normalizedAction.type === 'MOVE_TO') {
-      if (!normalizedAction.target_poi) {
-        executionResult = {
-          success: false,
-          failure_type: null,
-          failure_reason: 'MOVE_TO missing target_poi'
-        }
-      } else {
-        executionResult = runWorldExecution()
-      }
+      executionResult = normalizedAction.target_poi
+        ? runWorldExecutor()
+        : {
+            success: false,
+            failure_type: 'INVALID_INTENT',
+            failure_reason: 'MOVE_TO missing target_poi'
+          }
     } else if (normalizedAction.type === 'INTERACT') {
-      executionResult = runWorldExecution()
+      executionResult = runWorldExecutor()
       effects.push({
         key: `interact.${String(normalizedAction.interaction_type || 'none').toLowerCase()}`,
         before: normalizedAction.target_item || normalizedAction.target_poi || '',
@@ -202,16 +177,14 @@ export function useAgentSystem({
         detail: executionResult.failure_reason || ''
       })
     } else if (
-      normalizedAction.type === 'THINK' ||
-      normalizedAction.type === 'SPEAK' ||
-      normalizedAction.type === 'IDLE' ||
-      normalizedAction.type === 'FINISH'
+      normalizedAction.type !== 'THINK' &&
+      normalizedAction.type !== 'SPEAK' &&
+      normalizedAction.type !== 'IDLE' &&
+      normalizedAction.type !== 'FINISH'
     ) {
-      // no world mutation
-    } else {
       executionResult = {
         success: false,
-        failure_type: null,
+        failure_type: 'UNKNOWN_ACTION',
         failure_reason: `Unknown action type: ${normalizedAction.type}`
       }
     }
@@ -250,18 +223,19 @@ export function useAgentSystem({
   }, [executeWorldAction, onActionExecuted, readWorldSnapshot])
 
   const dispatchIntent = useCallback((actionPayload, options = {}) => {
-    const { resultOverride = null } = options
     const applied = executeAction(actionPayload)
     const committedAction = buildCommittedAction(applied.action)
-    const committedResult = resultOverride || applied.executionResult
+    const committedResult = options.resultOverride || applied.executionResult
+
     setLastAction(committedAction)
     setLastResult(committedResult)
+
     return {
       action: committedAction,
       executionResult: committedResult,
       agentState: applied.agentState
     }
-  }, [executeAction, buildCommittedAction])
+  }, [buildCommittedAction, executeAction])
 
   const commitManualAction = useCallback((actionPayload, resultOverride = null) => {
     return dispatchIntent(actionPayload, { resultOverride })
@@ -272,152 +246,172 @@ export function useAgentSystem({
     setIsThinking(true)
 
     try {
-      const obs = perceiveWorld()
-      setLastObservation(obs)
+      const observation = perceiveWorld()
+      setLastObservation(observation)
 
       const response = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(obs)
+        body: JSON.stringify(observation)
       })
 
-      if (!response.ok) throw new Error(`Backend error: ${response.status}`)
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`)
+      }
 
       const data = await response.json()
       setLastError(data.error || null)
+
       if (typeof data.episode_id === 'number') {
         episodeIdRef.current = data.episode_id
       } else if (typeof data.intent?.episode_id === 'number') {
         episodeIdRef.current = data.intent.episode_id
       }
+
       const normalizedIntent = normalizeBackendIntent(data.intent)
       const committedIntent = buildCommittedAction(normalizedIntent)
 
-      const reflex = data.reflex_verdict
-      const isBlocked = reflex && reflex.verdict === 'BLOCK'
-      const adjudicationResult =
-        data.execution_result || {
-          success: !isBlocked,
-          failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
-          failure_reason: reflex?.message || ''
-        }
-      const canExecute = !isBlocked && Boolean(adjudicationResult.success)
+      const isBlocked = data?.reflex_verdict?.verdict === 'BLOCK'
+      const adjudicationResult = data.execution_result || {
+        success: !isBlocked,
+        failure_type: isBlocked ? 'REFLEX_BLOCK' : null,
+        failure_reason: data?.reflex_verdict?.message || ''
+      }
+
+      const canExecute = !isBlocked && adjudicationResult.success !== false
 
       if (canExecute) {
-        const applied = dispatchIntent(normalizedIntent)
-        const responseWithExecution = {
-          ...data,
-          intent: applied.action,
-          adjudication_result: adjudicationResult,
-          execution_result: applied.executionResult
-        }
-        setLastResponse(responseWithExecution)
-        onTickComplete(responseWithExecution, obs)
-      } else if (isBlocked) {
-        const blockedExecutionResult = {
-          success: false,
-          failure_type: 'REFLEX_BLOCK',
-          failure_reason: adjudicationResult.failure_reason || reflex?.message || ''
-        }
-        setLastAction(committedIntent)
-        setLastResult(blockedExecutionResult)
-        setLastEffects([
-          {
-            key: 'reflex.block',
-            before: 'pending',
-            after: 'blocked',
-            ok: false,
-            detail: blockedExecutionResult.failure_reason || ''
+        if (autoExecuteBackendIntent) {
+          const applied = dispatchIntent(normalizedIntent)
+          const responseWithExecution = {
+            ...data,
+            intent: applied.action,
+            adjudication_result: adjudicationResult,
+            execution_result: applied.executionResult
           }
-        ])
+
+          setLastResponse(responseWithExecution)
+          onTickComplete(responseWithExecution, observation)
+          return
+        }
+
+        setLastAction(committedIntent)
+        setLastResult(adjudicationResult)
+        setLastEffects([])
+
         const responseWithExecution = {
           ...data,
           intent: committedIntent,
           adjudication_result: adjudicationResult,
-          execution_result: blockedExecutionResult
+          execution_result: adjudicationResult,
+          manual_required: true
         }
+
         setLastResponse(responseWithExecution)
-        onTickComplete(responseWithExecution, obs)
-      } else {
-        const adjudicationFailedExecutionResult = {
-          success: false,
-          failure_type: adjudicationResult.failure_type || 'REASONING_ERROR',
-          failure_reason: adjudicationResult.failure_reason || 'Adjudication failed before execution.'
-        }
-        setLastAction(committedIntent)
-        setLastResult(adjudicationFailedExecutionResult)
-        setLastEffects([
-          {
-            key: 'adjudication.fail',
-            before: 'allowed',
-            after: 'not_executed',
-            ok: false,
-            detail: adjudicationFailedExecutionResult.failure_reason
-          }
-        ])
-        const responseWithExecution = {
-          ...data,
-          intent: committedIntent,
-          adjudication_result: adjudicationResult,
-          execution_result: adjudicationFailedExecutionResult
-        }
-        setLastResponse(responseWithExecution)
-        onTickComplete(responseWithExecution, obs)
+        onTickComplete(responseWithExecution, observation)
+        return
       }
-    } catch (e) {
+
+      const blockedResult = isBlocked
+        ? {
+            success: false,
+            failure_type: 'REFLEX_BLOCK',
+            failure_reason: adjudicationResult.failure_reason || data?.reflex_verdict?.message || ''
+          }
+        : {
+            success: false,
+            failure_type: adjudicationResult.failure_type || 'REASONING_ERROR',
+            failure_reason: adjudicationResult.failure_reason || 'Adjudication failed before execution.'
+          }
+
+      setLastAction(committedIntent)
+      setLastResult(blockedResult)
+      setLastEffects([
+        {
+          key: isBlocked ? 'reflex.block' : 'adjudication.fail',
+          before: 'pending',
+          after: 'failed',
+          ok: false,
+          detail: blockedResult.failure_reason || ''
+        }
+      ])
+
+      const responseWithExecution = {
+        ...data,
+        intent: committedIntent,
+        adjudication_result: adjudicationResult,
+        execution_result: blockedResult
+      }
+
+      setLastResponse(responseWithExecution)
+      onTickComplete(responseWithExecution, observation)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
       setLastAction({
         session_id: sessionIdRef.current,
         episode_id: episodeIdRef.current,
         step_id: stepCounterRef.current,
         type: 'THINK',
-        content: `Error: ${e.message}`
+        content: `Error: ${message}`
       })
+
       setLastResult({
         success: false,
         failure_type: 'REASONING_ERROR',
-        failure_reason: e.message
+        failure_reason: message
       })
+
       setLastEffects([
         {
           key: 'tick.error',
           before: 'request',
           after: 'failed',
           ok: false,
-          detail: e.message
+          detail: message
         }
       ])
+
       setLastError({
         error_code: 'E_REASONING_RUNTIME',
         module: 'frontend_bridge',
         severity: 'ERROR',
         description: 'Tick request failed before receiving backend response.',
-        detail: e.message,
+        detail: message,
         extra: {}
       })
     } finally {
       setIsThinking(false)
     }
-  }, [isThinking, perceiveWorld, backendUrl, dispatchIntent, buildCommittedAction, onTickComplete])
+  }, [
+    isThinking,
+    perceiveWorld,
+    backendUrl,
+    buildCommittedAction,
+    dispatchIntent,
+    onTickComplete,
+    autoExecuteBackendIntent
+  ])
 
   useEffect(() => {
     if (!autoLoop) return
 
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       tick()
     }, 3000)
 
-    return () => clearInterval(interval)
+    return () => clearInterval(timer)
   }, [autoLoop, tick])
 
-  const startAutoLoop = () => setAutoLoop(true)
-  const stopAutoLoop = () => setAutoLoop(false)
-  const toggleAutoLoop = () => setAutoLoop((prev) => !prev)
+  const startAutoLoop = useCallback(() => setAutoLoop(true), [])
+  const stopAutoLoop = useCallback(() => setAutoLoop(false), [])
+  const toggleAutoLoop = useCallback(() => setAutoLoop((prev) => !prev), [])
 
-  const updateTask = (newTask) => {
+  const updateTask = useCallback((newTask) => {
     setUserInstruction(newTask)
-  }
+  }, [])
 
-  const resetAgent = () => {
+  const resetAgent = useCallback(() => {
     setLastAction(null)
     setLastResult(null)
     setLastEffects([])
@@ -427,7 +421,7 @@ export function useAgentSystem({
 
     episodeIdRef.current = null
     stepCounterRef.current = 0
-  }
+  }, [])
 
   const currentAgentState = readWorldSnapshot().agent
 
@@ -435,12 +429,14 @@ export function useAgentSystem({
     agentState: currentAgentState,
     isThinking,
     autoLoop,
+
     lastAction,
     lastResult,
     lastEffects,
     lastError,
     lastObservation,
     lastResponse,
+
     userInstruction,
     sessionId: sessionIdRef.current,
     episodeId: episodeIdRef.current,
@@ -471,9 +467,6 @@ export function AgentSystemProvider({ children, config }) {
     </AgentSystemContext.Provider>
   )
 }
-
-import { createContext, useContext } from 'react'
-const AgentSystemContext = createContext(null)
 
 export function useAgentSystemContext() {
   const context = useContext(AgentSystemContext)

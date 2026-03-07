@@ -1,7 +1,7 @@
 from pydantic import ValidationError
 
 from core.safety.error_dictionary import classify_step_error
-from core.reasoning import analyze_and_propose
+from core.brain import analyze
 from core.runtime.step_logger import emit_step_summary
 from schema.payload import (
     ActionExecutionResult,
@@ -29,7 +29,7 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
     exec_result = None
 
     try:
-        intent = await analyze_and_propose(obs)
+        intent = await analyze(obs)
 
         if intent.type == AgentActionType.THINK and "Confused" in intent.content:
             exec_result = ActionExecutionResult(
@@ -53,7 +53,7 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
             failure_reason=f"System Rejection: {str(e)}",
         )
     except Exception as e:
-        print(f"[Reasoning Runtime Error] {e}")
+        print(f"[Brain Runtime Error] {e}")
         intent = ActionPayload(
             session_id=obs.session_id,
             episode_id=obs.episode_id,

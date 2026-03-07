@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import importlib
@@ -8,8 +8,19 @@ from typing import Optional
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from schema.payload import AgentStepResponse, ObservationPayload
+from service.llm import greeting as llm_greeting
+
+
+class ChatRequest(BaseModel):
+    text: str = Field(..., description="User chat text")
+
+
+class ChatResponse(BaseModel):
+    text: str = Field(..., description="Assistant reply")
+
 
 app = FastAPI()
 _agent_module = None
@@ -40,6 +51,16 @@ def _load_agent_module():
 async def tick(obs: ObservationPayload):
     agent = _load_agent_module()
     return await agent.step(obs)
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+    text = (req.text or "").strip()
+    if not text:
+        return ChatResponse(text="Please say something.")
+
+    reply = await llm_greeting(text)
+    return ChatResponse(text=reply)
 
 
 def _set_env_if_provided(name: str, value: Optional[str]) -> None:
