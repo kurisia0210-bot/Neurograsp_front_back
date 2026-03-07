@@ -46,6 +46,7 @@ from schema.payload import (
     ObservationPayload,
 )
 from service.llm_client import get_completion
+from core.brain_rules import decide_rule_action
 
 
 # ============================================================================
@@ -95,93 +96,7 @@ async def analyze(obs: ObservationPayload) -> ActionPayload:
 # ============================================================================
 
 def _rule_decide(obs: ObservationPayload) -> ActionPayload:
-    """
-    基于规则的决策引擎，使用硬编码的if-else逻辑。
-    
-    设计思路:
-    1. 从复杂流水线架构简化而来，保持核心逻辑
-    2. 每个规则对应一个具体的任务模式
-    3. 规则可以嵌套调用，支持任务分解
-    
-    来源:
-    - legacy/core/pipeline/complex_actions.py (动作分解逻辑)
-    - legacy/core/safety/guards.py (前置条件检查)
-    
-    当前支持的规则:
-    1. PUT_IN(item, container) 分解 - 把物品放入容器
-    2. OPEN_THEN_PUT_IN(door, item, container) 分解 - 开门后放入物品
-    
-    扩展方法:
-    1. 添加新的if分支处理新任务
-    2. 创建新的规则函数（如_rule_put_in_fridge）
-    3. 在规则函数中实现任务分解步骤
-    
-    注意:
-    - 规则匹配使用简单的字符串包含检查
-    - 对于复杂任务，建议使用LLM模式
-    - 保持规则简单、可维护
-    """
-    task = obs.global_task.lower()
-    location = _get_location(obs)
-    holding = _get_holding(obs)
-    
-    # ==================== 规则1: 把红方块放进冰箱 ====================
-    # 匹配任务描述中包含"put"、"red_cube"和"fridge"的情况
-    if "put" in task and "red_cube" in task and "fridge" in task:
-        return _rule_put_in_fridge(obs, location, holding)
-    
-    # ==================== 规则2: 开门 ====================
-    # 匹配任务描述中包含"open"和"door"的情况
-    if "open" in task and "door" in task:
-        return _interact(obs, InteractionType.OPEN, "fridge_door", "Open fridge door")
-    
-    # ==================== 默认: 思考 ====================
-    # 没有匹配的规则时，返回THINK动作让Agent思考
-    return _think(obs, f"No rule matched for task: {obs.global_task}")
-
-
-def _rule_put_in_fridge(
-    obs: ObservationPayload,
-    location: str,
-    holding: Optional[str]
-) -> ActionPayload:
-    """
-    分解规则：PUT_IN(red_cube, fridge_main) - 把红方块放进冰箱
-    
-    任务分解步骤:
-    1. 如果没有拿着红方块 → 捡起红方块 (PICK red_cube)
-    2. 如果冰箱门关着 → 打开冰箱门 (OPEN fridge_door)
-    3. 如果拿着红方块且门开着 → 放入冰箱 (PLACE in fridge_main)
-    
-    设计模式:
-    - 这是典型的"任务分解"模式
-    - 每个步骤检查前置条件
-    - 返回当前应该执行的动作
-    
-    扩展思路:
-    - 可以添加更多检查（如Agent位置、距离等）
-    - 可以支持更多物品和容器组合
-    - 可以添加错误处理（如物品不存在、门打不开等）
-    
-    注意:
-    - 这是一个线性分解，实际任务可能有并行步骤
-    - 假设冰箱门是唯一需要打开的门
-    - 假设冰箱内部容器是"fridge_main"
-    """
-    # 步骤1: 检查是否拿着红方块
-    if holding != "red_cube":
-        # 需要先捡起红方块
-        return _interact(obs, InteractionType.PICK, "red_cube", "Pick up red cube")
-    
-    # 步骤2: 检查冰箱门是否开着
-    door_state = _get_object_state(obs, "fridge_door")
-    if door_state == "closed":
-        # 需要先打开冰箱门
-        return _interact(obs, InteractionType.OPEN, "fridge_door", "Open fridge door")
-    
-    # 步骤3: 把方块放进冰箱
-    return _interact(obs, InteractionType.PLACE, "fridge_main", "Place cube in fridge")
-
+    return decide_rule_action(obs)
 
 # ============================================================================
 # LLM-Based Decision Engine
