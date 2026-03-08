@@ -37,7 +37,7 @@ export function useAgentSystem({
   getWorldState,
   executeWorldAction,
   resolveGoalSpec: resolveGoalSpecOverride,
-  initialTask = 'pick red_cube',
+  initialTask = 'pick apple_1',
   backendUrl = 'http://127.0.0.1:8001/api/tick',
   autoExecuteBackendIntent = true
 }) {

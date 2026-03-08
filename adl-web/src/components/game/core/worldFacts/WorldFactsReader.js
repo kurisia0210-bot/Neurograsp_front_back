@@ -6,25 +6,42 @@ import {
   createRelation
 } from './WorldFactsOntology'
 
-// Infer what the agent is holding from cube state.
 function inferHoldingFromCubes(cubes = []) {
   const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
   return holdingCube?.id || null
 }
 
-// Build the main storage: Entity Map.
-function buildEntitiesMap({ agentState, cubes = [], fridgeOpen = false }) {
+function getMeatEntityId(planeState) {
+  if (!planeState) return null
+  return planeState.isHeated ? WORLD_FACT_ENTITY_IDS.MEAT_HEATED : WORLD_FACT_ENTITY_IDS.MEAT_RAW
+}
+
+function inferMeatSurface(planeState) {
+  const pos = planeState?.position
+  if (!isPositionTriplet(pos)) return WORLD_FACT_ENTITY_IDS.TABLE_SURFACE
+
+  const [x] = pos
+  if (x >= 1.6) return WORLD_FACT_ENTITY_IDS.OVEN
+  return WORLD_FACT_ENTITY_IDS.TABLE_SURFACE
+}
+
+function buildEntitiesMap({
+  agentState,
+  cubes = [],
+  fridgeOpen = false,
+  ovenOpen = false,
+  planeState = null
+}) {
   const normalizedAgent = normalizeAgentFact(agentState)
   const inferredHolding = inferHoldingFromCubes(cubes)
-  const effectiveAgent = {
-    id: WORLD_FACT_ENTITY_IDS.AGENT,
-    type: 'human',
-    location: normalizedAgent.location,
-    holding: inferredHolding || normalizedAgent.holding || null
-  }
 
   const entities = {
-    [WORLD_FACT_ENTITY_IDS.AGENT]: effectiveAgent,
+    [WORLD_FACT_ENTITY_IDS.AGENT]: {
+      id: WORLD_FACT_ENTITY_IDS.AGENT,
+      type: 'human',
+      location: normalizedAgent.location,
+      holding: inferredHolding || normalizedAgent.holding || null
+    },
     [WORLD_FACT_ENTITY_IDS.FRIDGE_MAIN]: {
       id: WORLD_FACT_ENTITY_IDS.FRIDGE_MAIN,
       type: 'appliance',
@@ -39,6 +56,16 @@ function buildEntitiesMap({ agentState, cubes = [], fridgeOpen = false }) {
       id: WORLD_FACT_ENTITY_IDS.TABLE_SURFACE,
       type: 'surface',
       state: 'installed'
+    },
+    [WORLD_FACT_ENTITY_IDS.OVEN]: {
+      id: WORLD_FACT_ENTITY_IDS.OVEN,
+      type: 'appliance',
+      state: 'installed'
+    },
+    [WORLD_FACT_ENTITY_IDS.OVEN_DOOR]: {
+      id: WORLD_FACT_ENTITY_IDS.OVEN_DOOR,
+      type: 'door',
+      state: ovenOpen ? 'open' : 'closed'
     }
   }
 
@@ -53,14 +80,27 @@ function buildEntitiesMap({ agentState, cubes = [], fridgeOpen = false }) {
     }
   }
 
+  const meatId = getMeatEntityId(planeState)
+  if (meatId) {
+    entities[meatId] = {
+      id: meatId,
+      type: 'item',
+      name: meatId,
+      state: 'on_table',
+      position: isPositionTriplet(planeState.position) ? planeState.position : null,
+      color: planeState.isHeated ? '#f97316' : '#22c55e'
+    }
+  }
+
   return entities
 }
 
-// Build the second main storage: Relation List.
-function buildRelationsList({ cubes = [] }) {
+function buildRelationsList({ cubes = [], planeState = null }) {
   const relations = [
     createRelation(WORLD_FACT_ENTITY_IDS.FRIDGE_DOOR, 'in_front_of', WORLD_FACT_ENTITY_IDS.AGENT),
     createRelation(WORLD_FACT_ENTITY_IDS.FRIDGE_MAIN, 'is_a', 'kitchen_appliance'),
+    createRelation(WORLD_FACT_ENTITY_IDS.OVEN, 'is_a', 'kitchen_appliance'),
+    createRelation(WORLD_FACT_ENTITY_IDS.OVEN_DOOR, 'attached_to', WORLD_FACT_ENTITY_IDS.OVEN),
     createRelation(WORLD_FACT_ENTITY_IDS.TABLE_SURFACE, 'is_a', 'support_surface')
   ]
 
@@ -74,10 +114,14 @@ function buildRelationsList({ cubes = [] }) {
     }
   }
 
+  const meatId = getMeatEntityId(planeState)
+  if (meatId) {
+    relations.push(createRelation(meatId, 'on', inferMeatSurface(planeState)))
+  }
+
   return relations
 }
 
-// Convert relation object to a short text used by the legacy table view.
 function relationToLegacyText(relation) {
   if (!relation) return 'unknown'
 
@@ -85,6 +129,7 @@ function relationToLegacyText(relation) {
   if (relation.predicate === 'inside') return `inside ${relation.object}`
   if (relation.predicate === 'on') return `on ${relation.object}`
   if (relation.predicate === 'in_front_of') return `front of ${relation.object}`
+  if (relation.predicate === 'attached_to') return `attached to ${relation.object}`
   if (relation.predicate === 'is_a' && relation.object === 'kitchen_appliance') return 'kitchen appliance'
   if (relation.predicate === 'is_a' && relation.object === 'support_surface') return 'support surface'
 
@@ -98,31 +143,32 @@ function getAgentPositionFromLocation(location) {
   return null
 }
 
-// Legacy projection only.
-// Main storage is entities + relations.
 export function projectNearbyObjectsTable(snapshot) {
   const entities = snapshot?.entities || {}
   const relations = Array.isArray(snapshot?.relations) ? snapshot.relations : []
 
-  return Object.values(entities)
-    .map((entity) => {
-      const relation = relations.find((r) => r.subject === entity.id)
-      const isAgent = entity.id === WORLD_FACT_ENTITY_IDS.AGENT
-      return {
-        id: isAgent ? 'human' : entity.id,
-        state: isAgent ? (entity.holding ? `holding:${entity.holding}` : 'idle') : (entity.state || 'unknown'),
-        relation: isAgent ? `at ${entity.location || 'unknown'}` : relationToLegacyText(relation),
-        position: isAgent ? getAgentPositionFromLocation(entity.location) : (entity.position || null)
-      }
-    })
+  return Object.values(entities).map((entity) => {
+    const relation = relations.find((r) => r.subject === entity.id)
+    const isAgent = entity.id === WORLD_FACT_ENTITY_IDS.AGENT
+    return {
+      id: isAgent ? 'human' : entity.id,
+      state: isAgent ? (entity.holding ? `holding:${entity.holding}` : 'idle') : (entity.state || 'unknown'),
+      relation: isAgent ? `at ${entity.location || 'unknown'}` : relationToLegacyText(relation),
+      position: isAgent ? getAgentPositionFromLocation(entity.location) : (entity.position || null)
+    }
+  })
 }
 
-// Build one world snapshot.
-// Main shape: { entities, relations }.
-// Compatibility fields: { agent, nearby_objects }.
-export function readWorldFactsSnapshot({ agentState, cubes = [], fridgeOpen = false, timestamp } = {}) {
-  const entities = buildEntitiesMap({ agentState, cubes, fridgeOpen })
-  const relations = buildRelationsList({ cubes })
+export function readWorldFactsSnapshot({
+  agentState,
+  cubes = [],
+  fridgeOpen = false,
+  ovenOpen = false,
+  planeState = null,
+  timestamp
+} = {}) {
+  const entities = buildEntitiesMap({ agentState, cubes, fridgeOpen, ovenOpen, planeState })
+  const relations = buildRelationsList({ cubes, planeState })
   const nearbyObjectsForBackend = projectNearbyObjectsTable({
     entities,
     relations
@@ -138,7 +184,6 @@ export function readWorldFactsSnapshot({ agentState, cubes = [], fridgeOpen = fa
   const agentEntity = entities[WORLD_FACT_ENTITY_IDS.AGENT]
   return {
     ...snapshot,
-    // Keep old fields so current AgentSystem keeps working.
     agent: {
       location: agentEntity.location,
       holding: agentEntity.holding
@@ -147,14 +192,21 @@ export function readWorldFactsSnapshot({ agentState, cubes = [], fridgeOpen = fa
   }
 }
 
-// Factory used by runtime modules.
-export function createWorldFactsReader({ getAgentState, getCubes, getFridgeOpen } = {}) {
+export function createWorldFactsReader({
+  getAgentState,
+  getCubes,
+  getFridgeOpen,
+  getOvenOpen,
+  getPlaneState
+} = {}) {
   return {
     readSnapshot() {
       return readWorldFactsSnapshot({
         agentState: typeof getAgentState === 'function' ? getAgentState() : null,
         cubes: typeof getCubes === 'function' ? getCubes() : [],
         fridgeOpen: typeof getFridgeOpen === 'function' ? getFridgeOpen() : false,
+        ovenOpen: typeof getOvenOpen === 'function' ? getOvenOpen() : false,
+        planeState: typeof getPlaneState === 'function' ? getPlaneState() : null,
         timestamp: Date.now() / 1000
       })
     }

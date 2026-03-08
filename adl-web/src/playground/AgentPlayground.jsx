@@ -7,18 +7,26 @@ import { NotificationBubble } from '../components/game/items/NotificationBubble'
 import { WholeCube } from '../components/game/mechanics/GameCube'
 import { GameFridge } from '../components/game/mechanics/GameFridge'
 import { ActionTriggerBubble } from '../components/game/mechanics/ActionTriggerBubble'
-import { ActionType } from '../components/game/core/ActionContract'
+import { ActionType, InteractionType } from '../components/game/core/ActionContract'
 import { AgentControls, BackButton } from '../components/game/mechanics/AgentControls'
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
 import { createWorldFactsReader, createWorldFactsWriter } from '../components/game/core/worldFacts'
 import { TmpTable } from '../components/TmpTable'
 import { TmpHuman } from '../components/TmpHuman'
+import { GameOven } from '../components/gameoven'
+import { GamePlane } from '../components/gameplane'
 import { DashboardBooklet } from './DashboardBooklet'
 
 const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
-const FRIDGE_MAIN_DROP_HALF_SIZE = [1.05, 0.85] // [halfX, halfZ]
+const FRIDGE_MAIN_DROP_HALF_SIZE = [0.68, 0.52] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+const OVEN_MAIN_DROP_CENTER = [2.75, -0.2] // [x, z]
+const OVEN_MAIN_DROP_HALF_SIZE = [0.34, 0.24] // [halfX, halfZ]
+const OVEN_MAIN_SNAP_POSITION = [2.75, 0.95, -0.28]
+const OVEN_ZONE_POSITION = [2.35, 0, -0.1]
+const PLANE_INITIAL_POSITION = [0.4, 1.701, -0.4]
+
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
   const [x, , z] = position
@@ -28,9 +36,18 @@ function isInFridgeMainDropZone(position) {
   )
 }
 
+function isInOvenMainDropZone(position) {
+  if (!Array.isArray(position)) return false
+  const [x, , z] = position
+  return (
+    Math.abs(x - OVEN_MAIN_DROP_CENTER[0]) <= OVEN_MAIN_DROP_HALF_SIZE[0] &&
+    Math.abs(z - OVEN_MAIN_DROP_CENTER[1]) <= OVEN_MAIN_DROP_HALF_SIZE[1]
+  )
+}
+
 function getVisualTargetPosition(location) {
   if (location === 'fridge_zone') return [-2, 0, 1]
-  if (location === 'stove_zone') return [2, 0, 1]
+  if (location === 'stove_zone') return OVEN_ZONE_POSITION
   return DEFAULT_AGENT_POSITION
 }
 
@@ -114,8 +131,14 @@ function toBubbleFromExecution(intent, executionResult, fallbackError = null) {
 
 export function AgentPlayground({ onBack }) {
   const autoSnapLockRef = useRef(false)
+
   const worldStateManager = useWorldStateManager({
     initialFridgeOpen: false,
+    initialOvenOpen: false,
+    initialPlaneState: {
+      position: PLANE_INITIAL_POSITION,
+      isHeated: false
+    },
     initialCubes: [
       {
         id: 'red_cube',
@@ -132,30 +155,46 @@ export function AgentPlayground({ onBack }) {
     return createWorldFactsReader({
       getAgentState: () => worldStateManager.agentState,
       getCubes: () => worldStateManager.cubes,
-      getFridgeOpen: () => worldStateManager.fridgeOpen
+      getFridgeOpen: () => worldStateManager.fridgeOpen,
+      getOvenOpen: () => worldStateManager.ovenOpen,
+      getPlaneState: () => worldStateManager.planeState
     })
-  }, [worldStateManager.agentState, worldStateManager.cubes, worldStateManager.fridgeOpen])
+  }, [
+    worldStateManager.agentState,
+    worldStateManager.cubes,
+    worldStateManager.fridgeOpen,
+    worldStateManager.ovenOpen,
+    worldStateManager.planeState
+  ])
 
   const worldFactsWriter = useMemo(() => {
     return createWorldFactsWriter({
       getAgentState: () => worldStateManager.agentState,
       getCubes: () => worldStateManager.cubes,
       getFridgeOpen: () => worldStateManager.fridgeOpen,
+      getOvenOpen: () => worldStateManager.ovenOpen,
+      getPlaneState: () => worldStateManager.planeState,
       setAgentLocation: worldStateManager.setAgentLocation,
       pickUpCube: worldStateManager.pickUpCube,
       placeCube: worldStateManager.placeCube,
       toggleFridgeDoor: worldStateManager.toggleFridgeDoor,
-      updateCubePosition: worldStateManager.updateCubePosition
+      toggleOvenDoor: worldStateManager.toggleOvenDoor,
+      updateCubePosition: worldStateManager.updateCubePosition,
+      setPlaneHeated: worldStateManager.setPlaneHeated
     })
   }, [
     worldStateManager.agentState,
     worldStateManager.cubes,
     worldStateManager.fridgeOpen,
+    worldStateManager.ovenOpen,
+    worldStateManager.planeState,
     worldStateManager.setAgentLocation,
     worldStateManager.pickUpCube,
     worldStateManager.placeCube,
     worldStateManager.toggleFridgeDoor,
-    worldStateManager.updateCubePosition
+    worldStateManager.toggleOvenDoor,
+    worldStateManager.updateCubePosition,
+    worldStateManager.setPlaneHeated
   ])
 
   const [behaviorLine, setBehaviorLine] = useState('Action: waiting for next step')
@@ -287,11 +326,29 @@ export function AgentPlayground({ onBack }) {
     setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
   }
 
+  const handleHeatPlane = () => {
+    const targetItem = worldStateManager.planeState.isHeated ? 'meat_heated' : 'meat_raw'
+    const intent = {
+      type: ActionType.INTERACT,
+      interaction_type: InteractionType.COOK,
+      target_item: targetItem,
+      content: `Manual heat ${targetItem}`
+    }
+
+    const committed = agentSystem.dispatchIntent(intent)
+    const triggerResult = toBubbleFromExecution(intent, committed?.executionResult)
+
+    setActionBubble({
+      visible: true,
+      status: triggerResult.status,
+      message: triggerResult.message
+    })
+    setBehaviorLine(`Action: heat ${targetItem}`)
+  }
 
   return (
     <div className="w-full h-full relative bg-[#1e1e1e]">
       {onBack && <BackButton onBack={onBack} />}
-
 
       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
         <NotificationBubble
@@ -334,6 +391,26 @@ export function AgentPlayground({ onBack }) {
         </button>
       </div>
 
+      <div className="absolute top-[56%] left-[66%] z-50">
+        <button
+          onClick={() => moveAgentTo('stove_zone', 'oven')}
+          disabled={agentSystem.isThinking}
+          className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
+        >
+          Go to Oven
+        </button>
+      </div>
+
+      <div className="absolute top-[62%] left-[66%] z-50">
+        <button
+          onClick={handleHeatPlane}
+          disabled={agentSystem.isThinking}
+          className="px-3 py-1.5 bg-orange-600/90 hover:bg-orange-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
+        >
+          Heat Meat
+        </button>
+      </div>
+
       <Canvas>
         <OrthographicCamera
           makeDefault
@@ -346,6 +423,26 @@ export function AgentPlayground({ onBack }) {
 
         <TmpTable />
         <TmpHuman position={agentVisualPosition} />
+        <GameOven
+          position={[2.75, 0, -0.4]}
+          isOpen={worldStateManager.ovenOpen}
+          onToggleDoor={worldStateManager.toggleOvenDoor}
+        />
+        <GamePlane
+          position={worldStateManager.planeState.position}
+          isHeated={worldStateManager.planeState.isHeated}
+          onPositionChange={worldStateManager.setPlanePosition}
+        />
+
+        <mesh position={[OVEN_MAIN_DROP_CENTER[0], 0.95, OVEN_MAIN_DROP_CENTER[1]]}>
+          <boxGeometry args={[OVEN_MAIN_DROP_HALF_SIZE[0] * 2, 0.55, OVEN_MAIN_DROP_HALF_SIZE[1] * 2]} />
+          <meshStandardMaterial
+            color={worldStateManager.ovenOpen ? '#22c55e' : '#64748b'}
+            transparent
+            opacity={worldStateManager.ovenOpen ? 0.18 : 0.08}
+            wireframe
+          />
+        </mesh>
 
         <GameFridge
           isOpen={worldStateManager.fridgeOpen}
@@ -369,17 +466,29 @@ export function AgentPlayground({ onBack }) {
 
               if (autoSnapLockRef.current) return
               if (cube.state !== 'in_hand') return
-              if (!worldStateManager.fridgeOpen) return
-              if (!isInFridgeMainDropZone(nextPosition)) return
 
-              autoSnapLockRef.current = true
-              worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-              setActionBubble({
-                visible: true,
-                status: 'SUCCESS',
-                message: 'Auto snap: red_cube -> fridge_main'
-              })
-              setBehaviorLine('Action: place red_cube -> fridge_main (auto snap)')
+              if (worldStateManager.fridgeOpen && isInFridgeMainDropZone(nextPosition)) {
+                autoSnapLockRef.current = true
+                worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+                setActionBubble({
+                  visible: true,
+                  status: 'SUCCESS',
+                  message: 'Auto snap: red_cube -> fridge_main'
+                })
+                setBehaviorLine('Action: place red_cube -> fridge_main (auto snap)')
+                return
+              }
+
+              if (worldStateManager.ovenOpen && isInOvenMainDropZone(nextPosition)) {
+                autoSnapLockRef.current = true
+                worldFactsWriter.placeHeldCube(cube.id, OVEN_MAIN_SNAP_POSITION, 'on_table')
+                setActionBubble({
+                  visible: true,
+                  status: 'SUCCESS',
+                  message: 'Auto snap: red_cube -> oven_main'
+                })
+                setBehaviorLine('Action: place red_cube -> oven_main (auto snap)')
+              }
             }}
             onPickUp={() => {
               autoSnapLockRef.current = false
@@ -387,11 +496,13 @@ export function AgentPlayground({ onBack }) {
             }}
             onPlace={() => {
               const currentPos = cube.position
-              const inFridgeZone =
-                Math.abs(currentPos[0] - -3) < 0.5 && Math.abs(currentPos[2] - -0.5) < 0.5
+              const inFridgeZone = isInFridgeMainDropZone(currentPos)
+              const inOvenZone = isInOvenMainDropZone(currentPos)
 
-              if (inFridgeZone) {
-                worldFactsWriter.placeHeldCube(cube.id, [-1.8, 1.2, -0.5], 'in_fridge')
+              if (worldStateManager.fridgeOpen && inFridgeZone) {
+                worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
+              } else if (worldStateManager.ovenOpen && inOvenZone) {
+                worldFactsWriter.placeHeldCube(cube.id, OVEN_MAIN_SNAP_POSITION, 'on_table')
               } else {
                 worldFactsWriter.placeHeldCube(cube.id, currentPos, 'on_table')
               }
@@ -415,7 +526,6 @@ export function AgentPlayground({ onBack }) {
         holdingItem={worldStateManager.holdingCube?.id}
         cubes={worldStateManager.cubes}
       />
-
     </div>
   )
 }

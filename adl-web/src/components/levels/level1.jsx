@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
@@ -10,6 +10,8 @@ import { Table } from '../Table'
 
 import { NotificationBubble } from '../game/items/NotificationBubble'
 import { useAgentSystem } from '../game/core/AgentSystem'
+import { useWorldStateManager } from '../game/core/WorldStateManager'
+import { createWorldFactsReader, createWorldFactsWriter } from '../game/core/worldFacts'
 
 const TABLE_HEIGHT = 0.85
 const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2
@@ -34,6 +36,11 @@ function formatIntentLine(intent) {
     return `Action: finish (${intent.content || 'task completed'})`
   }
   return `Action: ${type.toLowerCase()}`
+}
+
+function getPrimaryItemState(cubes) {
+  const item = (cubes || []).find((cube) => cube.id === 'apple_1')
+  return item?.state || 'on_table'
 }
 
 function InteractiveFridge({ position, isOpen, onToggle }) {
@@ -84,132 +91,67 @@ function InteractiveFridge({ position, isOpen, onToggle }) {
 }
 
 export function Level1({ onBack }) {
-  const [fridgeDoorOpen, setFridgeDoorOpen] = useState(false)
-  const [cubeState, setCubeState] = useState('on_table')
   const [showDebug, setShowDebug] = useState(false)
   const [actionLine, setActionLine] = useState('Action: waiting for next step')
   const lighting = usePlaygroundLightingSettings()
 
-  const getWorldState = useCallback(
-    (agentState = { location: 'table_center', holding: null }) => {
-      const nearby_objects = [
-        {
-          id: 'fridge_main',
-          state: 'installed',
-          relation: 'storage appliance'
-        },
-        {
-          id: 'fridge_door',
-          state: fridgeDoorOpen ? 'open' : 'closed',
-          relation: 'fridge door'
-        },
-        {
-          id: 'table_surface',
-          state: 'installed',
-          relation: 'work surface'
-        }
-      ]
-
-      if (cubeState === 'on_table') {
-        nearby_objects.push({
-          id: 'red_cube',
-          state: 'on_table',
-          relation: 'on table_surface'
-        })
-      } else if (cubeState === 'in_hand') {
-        nearby_objects.push({
-          id: 'red_cube',
-          state: 'in_hand',
-          relation: 'held by agent'
-        })
-      } else if (cubeState === 'in_fridge') {
-        nearby_objects.push({
-          id: 'red_cube',
-          state: 'in_fridge',
-          relation: 'inside fridge_main'
-        })
+  const worldStateManager = useWorldStateManager({
+    initialFridgeOpen: false,
+    initialCubes: [
+      {
+        id: 'apple_1',
+        name: 'Apple',
+        color: '#ff6b6b',
+        position: CUBE_POS_TABLE,
+        state: 'on_table',
+        dragHeight: CUBE_POS_TABLE[1]
       }
+    ]
+  })
 
-      return {
-        agent: {
-          location: agentState.location,
-          holding: cubeState === 'in_hand' ? 'red_cube' : null
-        },
-        nearby_objects
-      }
-    },
-    [cubeState, fridgeDoorOpen]
-  )
+  const worldFactsReader = useMemo(() => {
+    return createWorldFactsReader({
+      getAgentState: () => worldStateManager.agentState,
+      getCubes: () => worldStateManager.cubes,
+      getFridgeOpen: () => worldStateManager.fridgeOpen
+    })
+  }, [worldStateManager.agentState, worldStateManager.cubes, worldStateManager.fridgeOpen])
 
-  const executeWorldAction = useCallback(
-    (actionPayload) => {
-      const interactionType = String(actionPayload.interaction_type || 'NONE').toUpperCase()
-      const targetItem = actionPayload.target_item
-
-      if (interactionType === 'PICK') {
-        if (targetItem !== 'red_cube' || cubeState !== 'on_table') {
-          return { success: false, failure_reason: 'PICK precondition failed' }
-        }
-        setCubeState('in_hand')
-        return { success: true }
-      }
-
-      if (interactionType === 'OPEN') {
-        if (targetItem !== 'fridge_door') {
-          return { success: false, failure_reason: 'OPEN unsupported target' }
-        }
-        if (fridgeDoorOpen) {
-          return { success: false, failure_reason: 'OPEN precondition failed: already open' }
-        }
-        setFridgeDoorOpen(true)
-        return { success: true }
-      }
-
-      if (interactionType === 'CLOSE') {
-        if (targetItem !== 'fridge_door') {
-          return { success: false, failure_reason: 'CLOSE unsupported target' }
-        }
-        if (!fridgeDoorOpen) {
-          return { success: false, failure_reason: 'CLOSE precondition failed: already closed' }
-        }
-        setFridgeDoorOpen(false)
-        return { success: true }
-      }
-
-      if (interactionType === 'PLACE') {
-        if (cubeState !== 'in_hand') {
-          return { success: false, failure_reason: 'PLACE precondition failed: no item in hand' }
-        }
-
-        if (targetItem === 'fridge_main') {
-          if (!fridgeDoorOpen) {
-            return { success: false, failure_reason: 'PLACE precondition failed: fridge door closed' }
-          }
-          setCubeState('in_fridge')
-          return { success: true }
-        }
-
-        if (targetItem === 'table_surface') {
-          setCubeState('on_table')
-          return { success: true }
-        }
-
-        return { success: false, failure_reason: 'PLACE unsupported target' }
-      }
-
-      return { success: false, failure_reason: `Unsupported interaction ${interactionType}` }
-    },
-    [cubeState, fridgeDoorOpen]
-  )
+  const worldFactsWriter = useMemo(() => {
+    return createWorldFactsWriter({
+      getAgentState: () => worldStateManager.agentState,
+      getCubes: () => worldStateManager.cubes,
+      getFridgeOpen: () => worldStateManager.fridgeOpen,
+      setAgentLocation: worldStateManager.setAgentLocation,
+      pickUpCube: worldStateManager.pickUpCube,
+      placeCube: worldStateManager.placeCube,
+      toggleFridgeDoor: worldStateManager.toggleFridgeDoor,
+      updateCubePosition: worldStateManager.updateCubePosition
+    })
+  }, [
+    worldStateManager.agentState,
+    worldStateManager.cubes,
+    worldStateManager.fridgeOpen,
+    worldStateManager.setAgentLocation,
+    worldStateManager.pickUpCube,
+    worldStateManager.placeCube,
+    worldStateManager.toggleFridgeDoor,
+    worldStateManager.updateCubePosition
+  ])
 
   const agentSystem = useAgentSystem({
-    initialTask: 'pick red_cube',
-    getWorldState,
-    executeWorldAction,
+    initialTask: 'put apple_1 in fridge',
+    getWorldFacts: worldFactsReader.readSnapshot,
+    executeWorldAction: worldFactsWriter.executeIntent,
     onTickComplete: (response) => {
       setActionLine(formatIntentLine(response?.intent))
     }
   })
+
+  const fridgeDoorOpen = worldStateManager.fridgeOpen
+  const cubeState = getPrimaryItemState(worldStateManager.cubes)
+  const cubePosition =
+    cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
 
   const taskLine = 'Task: ' + (agentSystem.userInstruction?.trim() || 'No task set')
   const isVictory = cubeState === 'in_fridge'
@@ -238,8 +180,7 @@ export function Level1({ onBack }) {
   )
 
   const handleReset = () => {
-    setFridgeDoorOpen(false)
-    setCubeState('on_table')
+    worldStateManager.resetWorldState()
     setActionLine('Action: waiting for next step')
     agentSystem.resetAgent()
     agentSystem.stopAutoLoop()
@@ -254,7 +195,7 @@ export function Level1({ onBack }) {
   }
 
   const manualPick = () => {
-    runManualInteraction('PICK', 'red_cube')
+    runManualInteraction('PICK', 'apple_1')
   }
 
   const manualPlaceTable = () => {
@@ -264,9 +205,6 @@ export function Level1({ onBack }) {
   const manualPlaceFridge = () => {
     runManualInteraction('PLACE', 'fridge_main')
   }
-
-  const cubePosition =
-    cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
 
   return (
     <div className="w-full h-full relative bg-[#edf3f7]">
@@ -289,7 +227,7 @@ export function Level1({ onBack }) {
             value={agentSystem.userInstruction}
             onChange={(e) => handleTaskChange(e.target.value)}
             className="bg-transparent text-gray-800 outline-none w-80 text-sm"
-            placeholder="e.g. pick red_cube"
+            placeholder="e.g. put apple_1 in fridge"
           />
         </div>
 
@@ -328,7 +266,7 @@ export function Level1({ onBack }) {
             Toggle Door
           </button>
           <button onClick={manualPick} className="px-2 py-1 bg-slate-200 rounded">
-            Pick Cube
+            Pick Apple
           </button>
           <button onClick={manualPlaceTable} className="px-2 py-1 bg-slate-200 rounded">
             Place on Table

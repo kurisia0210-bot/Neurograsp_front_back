@@ -30,10 +30,6 @@ export const InteractionType = Object.freeze({
 export const ACTION_TYPES = Object.freeze(Object.values(ActionType))
 export const INTERACTION_TYPES = Object.freeze(Object.values(InteractionType))
 
-// Canonical payload model:
-// - MOVE_TO: type + target_poi
-// - INTERACT: type + interaction_type + target_item
-// Legacy fields like target_location are accepted as input aliases only.
 export const CANONICAL_ACTION_FIELDS = Object.freeze({
   MOVE_TO: Object.freeze(['type', 'target_poi']),
   INTERACT: Object.freeze(['type', 'interaction_type', 'target_item'])
@@ -148,8 +144,13 @@ export function normalizeBackendIntent(intent) {
     const rawTarget = intent.target_item ?? intent.target_location ?? intent.target_poi
     let targetItem = normalizeItemName(rawTarget)
 
-    if ((interactionType === 'OPEN' || interactionType === 'CLOSE') && targetItem === 'fridge_main') {
-      targetItem = 'fridge_door'
+    if (interactionType === 'OPEN' || interactionType === 'CLOSE') {
+      if (targetItem === 'fridge_main') {
+        targetItem = 'fridge_door'
+      }
+      if (targetItem === 'oven') {
+        targetItem = 'oven_door'
+      }
     }
 
     if (interactionType !== 'NONE' && !targetItem) {

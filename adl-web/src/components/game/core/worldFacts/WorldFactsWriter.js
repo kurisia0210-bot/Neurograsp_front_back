@@ -1,15 +1,6 @@
 import { normalizeBackendIntent } from '../ActionContract'
+import { WORLD_FACT_ENTITY_IDS } from './WorldFactsOntology'
 
-
-// ==========================================
-// CQRS: Command Side (状态写入器 / 物理安检员)
-// Architecture Role: Action Execution & Fact-based Guard
-// 架构角色：整个 3D 引擎的唯一修改入口。
-// 它冷酷无情：不盲信大模型，只根据物理事实决定动作是否成功，并将结果返回给总控。
-// ==========================================
-
-
-// Read current agent state in a safe, stable shape.
 function getSafeAgentState(getAgentState) {
   const state = typeof getAgentState === 'function' ? getAgentState() : null
   return {
@@ -18,23 +9,20 @@ function getSafeAgentState(getAgentState) {
   }
 }
 
-// Writer receives world update functions.
-// It executes normalized intents and updates world state.
-// Writer receives world update functions.
-// It executes normalized intents and updates world state.
-// 依赖注入 (DI)：接收底层的物理操作函数，封装成高层的执行器。
-
 export function createWorldFactsWriter({
   getAgentState,
   getCubes,
   getFridgeOpen,
+  getOvenOpen,
+  getPlaneState,
   setAgentLocation,
   pickUpCube,
   placeCube,
   toggleFridgeDoor,
-  updateCubePosition
+  toggleOvenDoor,
+  updateCubePosition,
+  setPlaneHeated
 } = {}) {
-  // Move agent to a target point of interest.
   const moveAgentTo = (targetPoi) => {
     if (typeof setAgentLocation !== 'function' || !targetPoi) {
       return {
@@ -60,33 +48,79 @@ export function createWorldFactsWriter({
     }
   }
 
-  // Put one cube into agent hand.
   const pickCube = (cubeId) => {
     if (typeof pickUpCube !== 'function' || !cubeId) return false
     pickUpCube(cubeId)
     return true
   }
 
-  // Place one held cube to target place/state.
   const placeHeldCube = (cubeId, position, newState = 'on_table') => {
     if (typeof placeCube !== 'function' || !cubeId) return false
     placeCube(cubeId, position, newState)
     return true
   }
 
-  // Update drag position while user is moving a cube.
   const updateCubeDragPosition = (cubeId, position) => {
     if (typeof updateCubePosition !== 'function') return false
     return Boolean(updateCubePosition(cubeId, position))
   }
 
-  // Main write entry. Execute one intent and return result.
-  // 核心执行中枢：大模型的所有动作意图 (Intent) 都在这里被解析和执行。
+  const cookMeat = (targetItem) => {
+    const safeTarget = String(targetItem || '').toLowerCase()
+    const validTargets = new Set([
+      WORLD_FACT_ENTITY_IDS.MEAT_RAW,
+      WORLD_FACT_ENTITY_IDS.MEAT_HEATED,
+      WORLD_FACT_ENTITY_IDS.OVEN
+    ])
+
+    if (!validTargets.has(safeTarget)) {
+      return {
+        success: false,
+        failure_reason: `COOK unsupported target: ${targetItem}`
+      }
+    }
+
+    const agent = getSafeAgentState(getAgentState)
+    if (agent.location !== 'stove_zone') {
+      return {
+        success: false,
+        failure_reason: 'COOK failed: move to stove_zone first'
+      }
+    }
+
+    const planeState = typeof getPlaneState === 'function' ? getPlaneState() : null
+    if (!planeState) {
+      return {
+        success: false,
+        failure_reason: 'COOK failed: plane state not available'
+      }
+    }
+
+    if (planeState.isHeated) {
+      return {
+        success: true,
+        next_agent_state: agent
+      }
+    }
+
+    if (typeof setPlaneHeated !== 'function') {
+      return {
+        success: false,
+        failure_reason: 'COOK not supported in current world writer'
+      }
+    }
+
+    setPlaneHeated(true)
+    return {
+      success: true,
+      next_agent_state: agent
+    }
+  }
+
   const executeIntent = (actionPayload) => {
     const normalizedAction = normalizeBackendIntent(actionPayload)
     const actionType = String(normalizedAction?.type || 'INTERACT').toUpperCase()
 
-    // These actions do not change world state.
     if (actionType === 'THINK' || actionType === 'SPEAK' || actionType === 'IDLE' || actionType === 'FINISH') {
       return {
         success: true,
@@ -107,6 +141,7 @@ export function createWorldFactsWriter({
 
     const cubes = typeof getCubes === 'function' ? getCubes() : []
     const fridgeOpen = Boolean(typeof getFridgeOpen === 'function' ? getFridgeOpen() : false)
+    const ovenOpen = Boolean(typeof getOvenOpen === 'function' ? getOvenOpen() : false)
     const interactionType = String(normalizedAction.interaction_type || 'NONE').toUpperCase()
     const targetItem = normalizedAction.target_item
 
@@ -175,54 +210,98 @@ export function createWorldFactsWriter({
       }
 
       case 'OPEN': {
-        if (targetItem !== 'fridge_door') {
-          return {
-            success: false,
-            failure_reason: `OPEN unsupported target: ${targetItem}`
+        if (targetItem === 'fridge_door') {
+          if (fridgeOpen) {
+            return {
+              success: false,
+              failure_reason: 'OPEN failed: fridge door already open'
+            }
           }
-        }
-        if (fridgeOpen) {
+          if (typeof toggleFridgeDoor === 'function') {
+            toggleFridgeDoor()
+          }
           return {
-            success: false,
-            failure_reason: 'OPEN failed: fridge door already open'
+            success: true,
+            next_agent_state: getSafeAgentState(getAgentState)
           }
         }
 
-        if (typeof toggleFridgeDoor === 'function') {
-          toggleFridgeDoor()
+        if (targetItem === 'oven_door') {
+          if (ovenOpen) {
+            return {
+              success: false,
+              failure_reason: 'OPEN failed: oven door already open'
+            }
+          }
+          if (typeof toggleOvenDoor === 'function') {
+            toggleOvenDoor()
+          }
+          return {
+            success: true,
+            next_agent_state: getSafeAgentState(getAgentState)
+          }
         }
+
         return {
-          success: true,
-          next_agent_state: getSafeAgentState(getAgentState)
+          success: false,
+          failure_reason: `OPEN unsupported target: ${targetItem}`
         }
       }
 
       case 'CLOSE': {
-        if (targetItem !== 'fridge_door') {
-          return {
-            success: false,
-            failure_reason: `CLOSE unsupported target: ${targetItem}`
+        if (targetItem === 'fridge_door') {
+          if (!fridgeOpen) {
+            return {
+              success: false,
+              failure_reason: 'CLOSE failed: fridge door already closed'
+            }
           }
-        }
-        if (!fridgeOpen) {
+          if (typeof toggleFridgeDoor === 'function') {
+            toggleFridgeDoor()
+          }
           return {
-            success: false,
-            failure_reason: 'CLOSE failed: fridge door already closed'
+            success: true,
+            next_agent_state: getSafeAgentState(getAgentState)
           }
         }
 
-        if (typeof toggleFridgeDoor === 'function') {
-          toggleFridgeDoor()
+        if (targetItem === 'oven_door') {
+          if (!ovenOpen) {
+            return {
+              success: false,
+              failure_reason: 'CLOSE failed: oven door already closed'
+            }
+          }
+          if (typeof toggleOvenDoor === 'function') {
+            toggleOvenDoor()
+          }
+          return {
+            success: true,
+            next_agent_state: getSafeAgentState(getAgentState)
+          }
         }
+
         return {
-          success: true,
-          next_agent_state: getSafeAgentState(getAgentState)
+          success: false,
+          failure_reason: `CLOSE unsupported target: ${targetItem}`
         }
+      }
+
+      case 'COOK': {
+        return cookMeat(targetItem)
       }
 
       case 'NONE': {
         if (targetItem === 'fridge_door' && typeof toggleFridgeDoor === 'function') {
           toggleFridgeDoor()
+          return {
+            success: true,
+            next_agent_state: getSafeAgentState(getAgentState)
+          }
+        }
+
+        if (targetItem === 'oven_door' && typeof toggleOvenDoor === 'function') {
+          toggleOvenDoor()
           return {
             success: true,
             next_agent_state: getSafeAgentState(getAgentState)
