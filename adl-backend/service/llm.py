@@ -31,7 +31,22 @@ _FINISH_SYSTEM_PROMPT = (
 
 
 class LLMError(RuntimeError):
-    """Raised when DeepSeek call cannot produce a valid reply."""
+    """Raised when LLM call cannot produce a valid reply."""
+
+
+def _resolve_channel_config(channel: str, default_model: str) -> tuple[str, str, str]:
+    model = os.getenv(f"{channel}_LLM_MODEL", default_model)
+    base_url = os.getenv(
+        f"{channel}_LLM_BASE_URL",
+        os.getenv("DEEPSEEK_BASE_URL", _DEEPSEEK_BASE_URL_DEFAULT),
+    )
+    api_key = os.getenv(f"{channel}_LLM_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
+    return model, base_url, api_key
+
+
+def chat_source() -> str:
+    model, _, _ = _resolve_channel_config("CHAT", _DEEPSEEK_MODEL_DEFAULT)
+    return model
 
 
 def build_greeting_messages(task: str) -> list[dict]:
@@ -58,24 +73,22 @@ def build_finish_messages(task: str, finish_reason: str) -> list[dict]:
 async def complete(
     *,
     messages: Sequence[dict],
-    model: str | None = None,
+    model: str,
+    base_url: str,
+    api_key: str,
     temperature: float = 0.2,
     max_tokens: int = 64,
 ) -> str:
     if _OPENAI_IMPORT_ERROR is not None or AsyncOpenAI is None:
         raise LLMError(f"LLM SDK import failed: {_OPENAI_IMPORT_ERROR}")
 
-    resolved_model = model or os.getenv("DEEPSEEK_MODEL", _DEEPSEEK_MODEL_DEFAULT)
-    resolved_base_url = os.getenv("DEEPSEEK_BASE_URL", _DEEPSEEK_BASE_URL_DEFAULT)
-    resolved_api_key = os.getenv("DEEPSEEK_API_KEY")
-
-    if not resolved_api_key:
-        raise LLMError("DEEPSEEK_API_KEY missing")
+    if not api_key:
+        raise LLMError("LLM API key missing")
 
     try:
-        client = AsyncOpenAI(api_key=resolved_api_key, base_url=resolved_base_url)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         resp = await client.chat.completions.create(
-            model=resolved_model,
+            model=model,
             messages=list(messages),
             temperature=temperature,
             max_tokens=max_tokens,
@@ -83,20 +96,54 @@ async def complete(
         )
         text = (resp.choices[0].message.content or "").strip()
     except Exception as exc:
-        raise LLMError(f"DeepSeek request failed: {exc}") from exc
+        raise LLMError(f"LLM request failed: {exc}") from exc
 
     if not text:
-        raise LLMError("DeepSeek returned empty text")
+        raise LLMError("LLM returned empty text")
 
     return text
 
 
+async def game_complete(
+    *,
+    messages: Sequence[dict],
+    temperature: float = 0.2,
+    max_tokens: int = 64,
+) -> str:
+    model, base_url, api_key = _resolve_channel_config("GAME", _DEEPSEEK_MODEL_DEFAULT)
+    return await complete(
+        messages=messages,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
+async def chat_complete(
+    *,
+    messages: Sequence[dict],
+    temperature: float = 0.2,
+    max_tokens: int = 64,
+) -> str:
+    model, base_url, api_key = _resolve_channel_config("CHAT", _DEEPSEEK_MODEL_DEFAULT)
+    return await complete(
+        messages=messages,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+
 async def greeting_strict(task: str) -> str:
-    return await complete(messages=build_greeting_messages(task))
+    return await chat_complete(messages=build_greeting_messages(task))
 
 
 async def finish_feedback(task: str, finish_reason: str) -> str:
-    return await complete(
+    return await game_complete(
         messages=build_finish_messages(task, finish_reason),
         temperature=0.9,
         max_tokens=96,
@@ -116,8 +163,11 @@ __all__ = [
     "LLMError",
     "build_greeting_messages",
     "build_finish_messages",
+    "chat_complete",
+    "chat_source",
     "complete",
     "finish_feedback",
+    "game_complete",
     "greeting",
     "greeting_strict",
 ]

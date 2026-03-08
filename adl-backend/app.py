@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from schema.payload import AgentStepResponse, ObservationPayload
-from service.llm import LLMError, greeting_strict as llm_greeting_strict
+from service.llm import LLMError, chat_source, greeting_strict as llm_greeting_strict
 
 
 class ChatRequest(BaseModel):
@@ -65,7 +65,7 @@ async def chat(req: ChatRequest):
     except LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return ChatResponse(text=reply, source="deepseek")
+    return ChatResponse(text=reply, source=chat_source())
 
 
 def _set_env_if_provided(name: str, value: Optional[str]) -> None:
