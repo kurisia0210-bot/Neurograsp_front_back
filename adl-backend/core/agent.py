@@ -3,6 +3,7 @@ from pydantic import ValidationError
 from core.safety.error_dictionary import classify_step_error
 from core.brain import analyze
 from core.runtime.step_logger import emit_step_summary
+from service.llm import LLMError, finish_feedback
 from schema.payload import (
     ActionExecutionResult,
     ActionPayload,
@@ -30,6 +31,12 @@ async def step(obs: ObservationPayload) -> AgentStepResponse:
 
     try:
         intent = await analyze(obs)
+
+        if intent.type == AgentActionType.FINISH:
+            try:
+                intent.content = await finish_feedback(obs.global_task, intent.content)
+            except LLMError as llm_exc:
+                print(f"[WARN] finish_feedback fallback: {llm_exc}")
 
         if intent.type == AgentActionType.THINK and "Confused" in intent.content:
             exec_result = ActionExecutionResult(

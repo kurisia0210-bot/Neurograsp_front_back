@@ -4,8 +4,11 @@ import { AgentBrainDashboard } from '../components/game/mechanics/AgentBrainDash
 import { HoldBox } from '../components/game/mechanics/HoldBox'
 import { projectNearbyObjectsTable } from '../components/game/core/worldFacts'
 
+const CHAT_API_URL = 'http://127.0.0.1:8001/api/chat'
+
 const DASHBOARD_PAGES = [
   { id: 'brain', label: 'Brain' },
+  { id: 'chat', label: 'Chat' },
   { id: 'history', label: 'History' },
   { id: 'wf-json', label: 'WF JSON' },
   { id: 'wf-table', label: 'WF Table' },
@@ -24,11 +27,42 @@ export function DashboardBooklet({
   cubes
 }) {
   const [dashboardPage, setDashboardPage] = useState('brain')
+  const [chatInput, setChatInput] = useState('nice to meet you')
+  const [chatReply, setChatReply] = useState('')
+  const [chatError, setChatError] = useState('')
+  const [chatSending, setChatSending] = useState(false)
 
   const snapshotTableRows = useMemo(() => {
     if (!snapshotPreview) return []
     return projectNearbyObjectsTable(snapshotPreview)
   }, [snapshotPreview])
+
+  const sendGreeting = async () => {
+    const text = (chatInput || '').trim()
+    if (!text || chatSending) return
+
+    setChatSending(true)
+    setChatError('')
+
+    try {
+      const response = await fetch(CHAT_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chat API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setChatReply(String(data?.text || ''))
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setChatSending(false)
+    }
+  }
 
   const renderPage = () => {
     if (dashboardPage === 'brain') {
@@ -39,6 +73,49 @@ export function DashboardBooklet({
           isThinking={isThinking}
           embedded
         />
+      )
+    }
+
+    if (dashboardPage === 'chat') {
+      return (
+        <div className="space-y-2">
+          <div className="text-[10px] text-gray-400">Greeting Test (/api/chat)</div>
+          <textarea
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            rows={3}
+            className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-[11px] text-gray-100 outline-none focus:border-cyan-400"
+            placeholder="Type a greeting..."
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={sendGreeting}
+              disabled={chatSending}
+              className="px-3 py-1 rounded text-[10px] bg-cyan-700/80 border border-cyan-400 text-white hover:bg-cyan-600 disabled:opacity-50"
+            >
+              {chatSending ? 'Sending...' : 'Send Greeting'}
+            </button>
+            <button
+              onClick={() => setChatInput('nice to meet you')}
+              className="px-3 py-1 rounded text-[10px] bg-gray-800 border border-gray-600 text-gray-300 hover:bg-gray-700"
+            >
+              Fill Example
+            </button>
+          </div>
+
+          {chatReply && (
+            <div className="bg-gray-900/80 border border-gray-700 rounded p-2">
+              <div className="text-[10px] text-green-300 mb-1">Reply</div>
+              <pre className="whitespace-pre-wrap break-words text-[11px] leading-4">{chatReply}</pre>
+            </div>
+          )}
+
+          {chatError && (
+            <div className="bg-red-900/30 border border-red-700 rounded p-2 text-[10px] text-red-300">
+              {chatError}
+            </div>
+          )}
+        </div>
       )
     }
 

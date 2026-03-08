@@ -6,12 +6,12 @@ import os
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from schema.payload import AgentStepResponse, ObservationPayload
-from service.llm import greeting as llm_greeting
+from service.llm import LLMError, greeting_strict as llm_greeting_strict
 
 
 class ChatRequest(BaseModel):
@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     text: str = Field(..., description="Assistant reply")
+    source: str = Field(..., description="Reply source")
 
 
 app = FastAPI()
@@ -57,10 +58,14 @@ async def tick(obs: ObservationPayload):
 async def chat(req: ChatRequest):
     text = (req.text or "").strip()
     if not text:
-        return ChatResponse(text="Please say something.")
+        raise HTTPException(status_code=400, detail="text is empty")
 
-    reply = await llm_greeting(text)
-    return ChatResponse(text=reply)
+    try:
+        reply = await llm_greeting_strict(text)
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return ChatResponse(text=reply, source="deepseek")
 
 
 def _set_env_if_provided(name: str, value: Optional[str]) -> None:
