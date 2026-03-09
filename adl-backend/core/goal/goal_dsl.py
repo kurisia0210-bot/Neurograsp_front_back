@@ -504,13 +504,33 @@ class GoalDslEvaluator:
 
     @staticmethod
     def _object_state_and_relation(obs: ObservationPayload, item_id: str) -> Tuple[str, str]:
-        for obj in obs.nearby_objects:
-            oid = _to_str(getattr(obj, "id", None))
-            if oid == item_id:
-                state = _to_str(getattr(obj, "state", None))
-                relation = (_to_str(getattr(obj, "relation", "")) or "").strip().lower()
-                return state, relation
-        return "MISSING", ""
+        wf = obs.world_facts or {}
+        entities = wf.get("entities") if isinstance(wf, dict) else None
+        relations = wf.get("relations") if isinstance(wf, dict) else None
+
+        entity = entities.get(item_id) if isinstance(entities, dict) else None
+        state = _to_str(entity.get("state")) if isinstance(entity, dict) else None
+
+        relation_text = ""
+        if isinstance(relations, list):
+            for rel in relations:
+                if not isinstance(rel, dict):
+                    continue
+                if _to_str(rel.get("subject")) != item_id:
+                    continue
+                pred = (_to_str(rel.get("predicate")) or "").strip().lower()
+                obj = (_to_str(rel.get("object")) or "").strip().lower()
+                if pred == "on":
+                    relation_text = f"on {obj}"
+                elif pred == "inside":
+                    relation_text = f"inside {obj}"
+                elif pred == "held_by":
+                    relation_text = f"held by {obj}"
+                else:
+                    relation_text = f"{pred} {obj}".strip()
+                break
+
+        return (state or "MISSING"), relation_text
 
 
 def _to_str(value: object) -> Optional[str]:
@@ -537,3 +557,5 @@ __all__ = [
     "ThenGoal",
     "CountGoal",
 ]
+
+

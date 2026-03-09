@@ -5,7 +5,8 @@ import { normalizeBackendIntent } from './ActionContract'
 
 function buildFallbackWorldSnapshot() {
   return {
-    nearby_objects: [],
+    entities: {},
+    relations: [],
     timestamp: Date.now() / 1000,
     agent: {
       location: 'table_center',
@@ -20,7 +21,8 @@ function normalizeWorldSnapshot(rawWorldState) {
 
   return {
     ...worldState,
-    nearby_objects: worldState.nearby_objects || [],
+    entities: worldState.entities || {},
+    relations: Array.isArray(worldState.relations) ? worldState.relations : [],
     agent: {
       location: worldAgent.location || 'table_center',
       holding: Object.prototype.hasOwnProperty.call(worldAgent, 'holding') ? worldAgent.holding : null
@@ -95,7 +97,10 @@ export function useAgentSystem({
         location: worldAgent.location,
         holding: worldAgent.holding
       },
-      nearby_objects: worldSnapshot.nearby_objects || [],
+      world_facts: {
+        entities: worldSnapshot.entities || {},
+        relations: Array.isArray(worldSnapshot.relations) ? worldSnapshot.relations : []
+      },
       global_task: userInstruction,
       goal_spec: worldSnapshot.goal_spec || parsedGoalSpec || null,
       last_action: lastAction,
@@ -475,3 +480,5 @@ export function useAgentSystemContext() {
   }
   return context
 }
+
+

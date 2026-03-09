@@ -12,20 +12,20 @@ import { AgentControls, BackButton } from '../components/game/mechanics/AgentCon
 import { useWorldStateManager } from '../components/game/core/WorldStateManager'
 import { createWorldFactsReader, createWorldFactsWriter } from '../components/game/core/worldFacts'
 import { TmpTable } from '../components/TmpTable'
-import { TmpHuman } from '../components/TmpHuman'
 import { GameOven } from '../components/gameoven'
 import { GamePlane } from '../components/gameplane'
 import { DashboardBooklet } from './DashboardBooklet'
 
-const DEFAULT_AGENT_POSITION = [1.5, 0, 2]
 const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
 const FRIDGE_MAIN_DROP_HALF_SIZE = [0.68, 0.52] // [halfX, halfZ]
 const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+
 const OVEN_MAIN_DROP_CENTER = [2.75, -0.2] // [x, z]
 const OVEN_MAIN_DROP_HALF_SIZE = [0.34, 0.24] // [halfX, halfZ]
 const OVEN_MAIN_SNAP_POSITION = [2.75, 0.95, -0.28]
-const OVEN_ZONE_POSITION = [2.35, 0, -0.1]
+
 const PLANE_INITIAL_POSITION = [0.4, 1.701, -0.4]
+const STATIC_HELD_ANCHOR = [1.84, 1.26, 2.02]
 
 function isInFridgeMainDropZone(position) {
   if (!Array.isArray(position)) return false
@@ -43,17 +43,6 @@ function isInOvenMainDropZone(position) {
     Math.abs(x - OVEN_MAIN_DROP_CENTER[0]) <= OVEN_MAIN_DROP_HALF_SIZE[0] &&
     Math.abs(z - OVEN_MAIN_DROP_CENTER[1]) <= OVEN_MAIN_DROP_HALF_SIZE[1]
   )
-}
-
-function getVisualTargetPosition(location) {
-  if (location === 'fridge_zone') return [-2, 0, 1]
-  if (location === 'stove_zone') return OVEN_ZONE_POSITION
-  return DEFAULT_AGENT_POSITION
-}
-
-function getHeldCubeAnchor(agentPosition) {
-  if (!Array.isArray(agentPosition) || agentPosition.length < 3) return [0, 1.2, 0]
-  return [agentPosition[0] + 0.34, 1.26, agentPosition[2] + 0.02]
 }
 
 function toHistoryEntry(response) {
@@ -205,7 +194,6 @@ export function AgentPlayground({ onBack }) {
     status: 'NO_INTENT',
     message: ''
   })
-  const [agentVisualPosition, setAgentVisualPosition] = useState(DEFAULT_AGENT_POSITION)
 
   const handleReadInitialSnapshot = () => {
     const snapshot = worldFactsReader.readSnapshot()
@@ -267,28 +255,6 @@ export function AgentPlayground({ onBack }) {
     return () => clearTimeout(timer)
   }, [actionBubble.visible])
 
-  useEffect(() => {
-    const target = getVisualTargetPosition(worldStateManager.agentState.location)
-    const timer = setInterval(() => {
-      setAgentVisualPosition((prev) => {
-        const next = prev.map((v, idx) => v + (target[idx] - v) * 0.18)
-        const dist = Math.hypot(
-          target[0] - next[0],
-          target[1] - next[1],
-          target[2] - next[2]
-        )
-
-        if (dist < 0.02) {
-          clearInterval(timer)
-          return target
-        }
-        return next
-      })
-    }, 16)
-
-    return () => clearInterval(timer)
-  }, [worldStateManager.agentState.location])
-
   const resetActionBubble = () => {
     setActionBubble({
       visible: false,
@@ -304,26 +270,7 @@ export function AgentPlayground({ onBack }) {
     setIntentHistory([])
     setSnapshotPreview(null)
     setBehaviorLine('Action: waiting for next step')
-    setAgentVisualPosition(getVisualTargetPosition('table_center'))
     resetActionBubble()
-  }
-
-  const moveAgentTo = (targetPoi, label) => {
-    const intent = {
-      type: ActionType.MOVE_TO,
-      target_poi: targetPoi,
-      content: `Manual move to ${targetPoi}`
-    }
-
-    const committed = agentSystem.dispatchIntent(intent)
-    const triggerResult = toBubbleFromExecution(intent, committed?.executionResult)
-
-    setActionBubble({
-      visible: true,
-      status: triggerResult.status,
-      message: triggerResult.message
-    })
-    setBehaviorLine(`Action: move to ${targetPoi} (${label})`)
   }
 
   const handleHeatPlane = () => {
@@ -371,36 +318,6 @@ export function AgentPlayground({ onBack }) {
         setUserInstruction={agentSystem.setUserInstruction}
       />
 
-      <div className="absolute top-[52%] left-[18%] z-50">
-        <button
-          onClick={() => moveAgentTo('fridge_zone', 'fridge')}
-          disabled={agentSystem.isThinking}
-          className="px-3 py-1.5 bg-cyan-600/90 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
-        >
-          Go to Fridge
-        </button>
-      </div>
-
-      <div className="absolute top-[63%] left-[52%] z-50">
-        <button
-          onClick={() => moveAgentTo('table_center', 'table')}
-          disabled={agentSystem.isThinking}
-          className="px-3 py-1.5 bg-slate-700/90 hover:bg-slate-600 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
-        >
-          Go to Table
-        </button>
-      </div>
-
-      <div className="absolute top-[56%] left-[66%] z-50">
-        <button
-          onClick={() => moveAgentTo('stove_zone', 'oven')}
-          disabled={agentSystem.isThinking}
-          className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow-lg transition-colors"
-        >
-          Go to Oven
-        </button>
-      </div>
-
       <div className="absolute top-[62%] left-[66%] z-50">
         <button
           onClick={handleHeatPlane}
@@ -422,7 +339,6 @@ export function AgentPlayground({ onBack }) {
         <directionalLight position={[-5, 10, 5]} intensity={1.2} />
 
         <TmpTable />
-        <TmpHuman position={agentVisualPosition} />
         <GameOven
           position={[2.75, 0, -0.4]}
           isOpen={worldStateManager.ovenOpen}
@@ -455,7 +371,7 @@ export function AgentPlayground({ onBack }) {
           <WholeCube
             key={cube.id}
             position={cube.position}
-            heldAnchor={getHeldCubeAnchor(agentVisualPosition)}
+            heldAnchor={STATIC_HELD_ANCHOR}
             dragHeight={cube.dragHeight}
             isHeldByAgent={cube.state === 'in_hand'}
             allowClickThroughWhileDragging={false}

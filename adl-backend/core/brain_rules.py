@@ -265,36 +265,90 @@ def _normalize_task(task: str) -> str:
     return (task or "").strip().lower().replace("_", " ")
 
 
+def _get_world_entities(obs: ObservationPayload) -> dict:
+    wf = obs.world_facts or {}
+    entities = wf.get("entities") if isinstance(wf, dict) else None
+    return entities if isinstance(entities, dict) else {}
+
+
+def _get_world_relations(obs: ObservationPayload) -> list:
+    wf = obs.world_facts or {}
+    relations = wf.get("relations") if isinstance(wf, dict) else None
+    return relations if isinstance(relations, list) else []
+
+
 def _get_location(obs: ObservationPayload) -> str:
-    location = obs.agent.location
-    return location.value if hasattr(location, "value") else str(location)
+    entities = _get_world_entities(obs)
+    agent_entity = entities.get("agent")
+    if isinstance(agent_entity, dict) and agent_entity.get("location"):
+        return str(agent_entity.get("location"))
+
+    if obs.agent is not None:
+        location = obs.agent.location
+        return location.value if hasattr(location, "value") else str(location)
+
+    return POI_TABLE_CENTER
 
 
 def _get_holding(obs: ObservationPayload) -> Optional[str]:
-    holding = obs.agent.holding
-    if holding is None:
-        return None
-    return holding.value if hasattr(holding, "value") else str(holding)
+    entities = _get_world_entities(obs)
+    agent_entity = entities.get("agent")
+    if isinstance(agent_entity, dict) and "holding" in agent_entity:
+        value = agent_entity.get("holding")
+        return None if value in (None, "") else str(value)
+
+    if obs.agent is not None:
+        holding = obs.agent.holding
+        if holding is None:
+            return None
+        return holding.value if hasattr(holding, "value") else str(holding)
+
+    return None
 
 
 def _get_object_state(obs: ObservationPayload, object_id: str) -> Optional[str]:
-    for obj in obs.nearby_objects:
-        oid = obj.id.value if hasattr(obj.id, "value") else str(obj.id)
-        if oid == object_id:
-            state = obj.state
-            return state.value if hasattr(state, "value") else str(state)
+    entities = _get_world_entities(obs)
+    entity = entities.get(object_id)
+    if isinstance(entity, dict) and "state" in entity:
+        value = entity.get("state")
+        return None if value in (None, "") else str(value)
+
     return None
 
 
 def _get_object_relation(obs: ObservationPayload, object_id: str) -> str:
-    for obj in obs.nearby_objects:
-        oid = obj.id.value if hasattr(obj.id, "value") else str(obj.id)
-        if oid == object_id:
-            return str(getattr(obj, "relation", "") or "")
+    for rel in _get_world_relations(obs):
+        if not isinstance(rel, dict):
+            continue
+        if str(rel.get("subject")) != object_id:
+            continue
+
+        predicate = str(rel.get("predicate") or "")
+        obj = str(rel.get("object") or "")
+
+        if predicate == "on":
+            return f"on {obj}"
+        if predicate == "inside":
+            return f"inside {obj}"
+        if predicate == "held_by":
+            return f"held by {obj}"
+
+        return f"{predicate} {obj}".strip()
+
     return ""
 
 
 def _is_object_on_target(obs: ObservationPayload, object_id: str, target_id: str) -> bool:
+    for rel in _get_world_relations(obs):
+        if not isinstance(rel, dict):
+            continue
+        if str(rel.get("subject")) != object_id:
+            continue
+        if str(rel.get("predicate")) != "on":
+            continue
+        if str(rel.get("object")) == target_id:
+            return True
+
     relation = _get_object_relation(obs, object_id).lower()
     return relation == f"on {target_id}".lower()
 
@@ -324,10 +378,10 @@ def _get_object_state_by_ids(obs: ObservationPayload, object_ids: Iterable[str])
 
 
 def _resolve_primary_item_id(obs: ObservationPayload, holding: Optional[str]) -> str:
-    for obj in obs.nearby_objects:
-        oid = obj.id.value if hasattr(obj.id, "value") else str(obj.id)
-        if oid in OBJECT_ID_PRIMARY_ITEM_ALIASES:
-            return oid
+    entities = _get_world_entities(obs)
+    for candidate in OBJECT_ID_PRIMARY_ITEM_ALIASES:
+        if candidate in entities:
+            return candidate
 
     if holding in OBJECT_ID_PRIMARY_ITEM_ALIASES:
         return holding

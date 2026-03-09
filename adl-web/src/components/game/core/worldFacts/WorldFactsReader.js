@@ -1,4 +1,4 @@
-import {
+﻿import {
   WORLD_FACTS_VERSION,
   WORLD_FACT_ENTITY_IDS,
   normalizeAgentFact,
@@ -143,7 +143,7 @@ function getAgentPositionFromLocation(location) {
   return null
 }
 
-export function projectNearbyObjectsTable(snapshot) {
+export function projectWorldFactsTable(snapshot) {
   const entities = snapshot?.entities || {}
   const relations = Array.isArray(snapshot?.relations) ? snapshot.relations : []
 
@@ -169,10 +169,6 @@ export function readWorldFactsSnapshot({
 } = {}) {
   const entities = buildEntitiesMap({ agentState, cubes, fridgeOpen, ovenOpen, planeState })
   const relations = buildRelationsList({ cubes, planeState })
-  const nearbyObjectsForBackend = projectNearbyObjectsTable({
-    entities,
-    relations
-  }).filter((row) => row.id !== 'human')
 
   const snapshot = {
     version: WORLD_FACTS_VERSION,
@@ -187,8 +183,7 @@ export function readWorldFactsSnapshot({
     agent: {
       location: agentEntity.location,
       holding: agentEntity.holding
-    },
-    nearby_objects: nearbyObjectsForBackend
+    }
   }
 }
 
@@ -212,3 +207,5 @@ export function createWorldFactsReader({
     }
   }
 }
+
+

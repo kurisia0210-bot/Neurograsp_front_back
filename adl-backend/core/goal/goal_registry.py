@@ -54,21 +54,55 @@ class GoalHandler(Protocol):
 
 class _GoalHandlerBase:
     def _location(self, obs: ObservationPayload) -> Optional[str]:
-        loc = getattr(obs.agent, "location", None)
+        wf = obs.world_facts or {}
+        entities = wf.get("entities") if isinstance(wf, dict) else None
+        agent = entities.get("agent") if isinstance(entities, dict) else None
+        location = agent.get("location") if isinstance(agent, dict) else None
+        if location is not None:
+            return str(location)
+
+        loc = getattr(obs.agent, "location", None) if obs.agent is not None else None
         return loc.value if hasattr(loc, "value") else loc
 
     def _holding(self, obs: ObservationPayload) -> Optional[str]:
-        h = getattr(obs.agent, "holding", None)
+        wf = obs.world_facts or {}
+        entities = wf.get("entities") if isinstance(wf, dict) else None
+        agent = entities.get("agent") if isinstance(entities, dict) else None
+        holding = agent.get("holding") if isinstance(agent, dict) else None
+        if holding is not None:
+            return str(holding)
+
+        h = getattr(obs.agent, "holding", None) if obs.agent is not None else None
         return h.value if hasattr(h, "value") else h
 
     def _object_state_relation(self, obs: ObservationPayload, item_id: str) -> Tuple[str, str]:
-        for obj in obs.nearby_objects:
-            oid = obj.id.value if hasattr(obj.id, "value") else obj.id
-            if oid == item_id:
-                state = obj.state.value if hasattr(obj.state, "value") else obj.state
-                relation = (obj.relation or "").strip().lower()
-                return str(state), relation
-        return "MISSING", ""
+        wf = obs.world_facts or {}
+        entities = wf.get("entities") if isinstance(wf, dict) else None
+        relations = wf.get("relations") if isinstance(wf, dict) else None
+
+        entity = entities.get(item_id) if isinstance(entities, dict) else None
+        state = str(entity.get("state")) if isinstance(entity, dict) and entity.get("state") is not None else "MISSING"
+
+        relation = ""
+        if isinstance(relations, list):
+            for rel in relations:
+                if not isinstance(rel, dict):
+                    continue
+                if str(rel.get("subject")) != item_id:
+                    continue
+                pred = str(rel.get("predicate") or "").strip().lower()
+                obj = str(rel.get("object") or "").strip().lower()
+                if pred == "on":
+                    relation = f"on {obj}"
+                elif pred == "inside":
+                    relation = f"inside {obj}"
+                elif pred == "held_by":
+                    relation = f"held by {obj}"
+                else:
+                    relation = f"{pred} {obj}".strip()
+                break
+
+        return state, relation
 
 
 class MoveToGoalHandler(_GoalHandlerBase):
@@ -719,3 +753,6 @@ __all__ = [
     "GoalRegistry",
     "GoalHandler",
 ]
+
+
+

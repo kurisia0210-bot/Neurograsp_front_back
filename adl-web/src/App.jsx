@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-// 棣冩啚 鐠囬攱鐗撮幑顔荤稑閻ㄥ嫬鐤勯梽鍛扮熅瀵板嫭顥呴弻銉礉婵″倹鐏?MainMenu 閸?ui 閺傚洣娆㈡径鐧哥礉鐠囬攱鏁兼稉?'./components/ui/MainMenu'
+// 妫ｅ啯鍟?閻犲洭鏀遍悧鎾箲椤旇崵绋戦柣銊ュ閻ゅ嫰姊介崨鎵唴鐎垫澘瀚ˉ鍛村蓟閵夘垳绀夊┑鈥冲€归悘?MainMenu 闁?ui 闁哄倸娲ｅ▎銏″緞閻у摜绀夐悹鍥敱閺佸吋绋?'./components/ui/MainMenu'
 import { MainMenu } from './components/MainMenu'
 import { Level1 } from './components/levels/level1'
 import { Playground } from './playground/Playground'
@@ -9,30 +9,30 @@ import { AgentPlayground } from './playground/AgentPlayground'
 import LivelyLightingComboPreview from './components/ui/light_test'
 
 export default function App() {
-  // 棣冃?鐠侯垳鏁遍悩鑸碘偓? 'menu' | 'level1' | 'playground' | 'bubble-test'
-  // 棣冃?瀵偓閸欐垶膩瀵骏绱伴惄瀛樺复閸氼垰濮╁ù瀣槸妞ょ敻娼伴敍灞炬暭娑?'bubble-test'
+  // 妫ｅ唭?閻犱警鍨抽弫閬嶆偐閼哥鍋? 'menu' | 'level1' | 'playground' | 'bubble-test'
+  // 妫ｅ唭?鐎殿喒鍋撻柛娆愬灦鑶╃€殿喖楠忕槐浼存儎鐎涙ê澶嶉柛姘煎灠婵晛霉鐎ｎ厾妲稿銈囨暬濞间即鏁嶇仦鐐毉濞?'bubble-test'
   const [currentScreen, setCurrentScreen] = useState('menu')
 
-  // 棣冾潵 閺嶇绺炬穱顔碱槻閿涙碍娅ら懗鍊熺熅閻㈠崬顦╅悶鍡楀毐閺?
-  // 鏉╂瑤閲滈崙鑺ユ殶鐟欙絽鍠呮禍?Cursor 閹稿洤鍤惃?"levelplayground" 閹峰吋甯撮柨娆掝嚖
+  // 妫ｅ喚娼?闁哄秶顭堢缓鐐┍椤旂⒈妲婚柨娑欑濞呫倝鎳楅崐鐔虹唴闁汇垹宕ˇ鈺呮偠閸℃姣愰柡?
+  // 閺夆晜鐟ら柌婊堝礄閼恒儲娈堕悷娆欑到閸犲懏绂?Cursor 闁圭娲ら崵顓㈡儍?"levelplayground" 闁瑰嘲鍚嬬敮鎾煥濞嗘帩鍤?
   const handleStartLevel = (levelId) => {
     if (levelId === 'playground') {
-      // 婵″倹鐏夐弰?playground閿涘瞼娲块幒銉ㄧ儲鏉烆剨绱濇稉宥堫洣閸旂姴澧犵紓鈧?
+      // 濠碘€冲€归悘澶愬及?playground闁挎稑鐬煎ú鍧楀箳閵夈劎鍎查弶鐑嗗墾缁辨繃绋夊鍫矗闁告梻濮存晶鐘电磽閳?
       setCurrentScreen('playground')
     } else if (levelId === 'agent-playground') {
-      // 婵″倹鐏夐弰?agent-playground閿涘瞼娲块幒銉ㄧ儲鏉?
+      // 濠碘€冲€归悘澶愬及?agent-playground闁挎稑鐬煎ú鍧楀箳閵夈劎鍎查弶?
       setCurrentScreen('agent-playground')
     } else {
-      // 婵″倹鐏夐弰顖涙殶鐎涙鍙ч崡?(1)閿涘苯濮炴稉濠傚缂傗偓閸欐ɑ鍨?'level1'
+      // 濠碘€冲€归悘澶愬及椤栨稒娈堕悗娑欘殔閸櫻囧础?(1)闁挎稑鑻慨鐐寸▔婵犲倸顤呯紓鍌楀亾闁告瑦蓱閸?'level1'
       setCurrentScreen(`level${levelId}`)
     }
   }
 
   return (
-    // 閸忔娊鏁悙鐧哥窗w-full h-screen overflow-hidden 绾喕绻氭稉宥勭窗閸戣櫣骞囬崣灞剧泊閸斻劍娼?
+    // 闁稿繑濞婇弫顓㈡倷閻у摜绐梬-full h-screen overflow-hidden 缁绢収鍠曠换姘▔瀹ュ嫮绐楅柛鎴ｆ楠炲洭宕ｇ仦鍓ф硦闁告柣鍔嶅?
     <div className="w-full h-screen font-sans overflow-hidden bg-slate-50">
       
-      {/* 棣冃?瀵偓閸欐垼鈧懎鎻╅幑閿嬪瘻闁?*/}
+      {/* 妫ｅ唭?鐎殿喒鍋撻柛娆愬灱閳ь剙鎳庨幓鈺呭箲闁垮鐦婚梺?*/}
       {currentScreen === 'menu' && (
         <div style={{ position: 'fixed', bottom: '20px', right: '20px', display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 9999 }}>
           <button
@@ -48,7 +48,6 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(52, 152, 219, 0.4)'
             }}
           >
-            Agent Playground
           </button>
           <button
             onClick={() => setCurrentScreen('svg-test')}
@@ -63,7 +62,6 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(155, 89, 182, 0.4)'
             }}
           >
-            SVG Test
           </button>
           <button
             onClick={() => setCurrentScreen('bubble-test')}
@@ -93,14 +91,13 @@ export default function App() {
               boxShadow: '0 4px 12px rgba(243, 156, 18, 0.4)'
             }}
           >
-            Light Test
           </button>
         </div>
       )}
       
-      {/* 棣冩磧 闁插秶鍋ｅΛ鈧弻銉ㄧ箹闁插矉绱?
-         娴ｇ姳绠ｉ崜宥囨畱娴狅絿鐖滈崣顖濆厴娑撳秴鐨箛鍐ㄥ灩閹哄绨?`{currentScreen === 'menu' && ...}` 鏉╂瑥鐪伴崠鍛帮紮閵?
-         韫囧懘銆忛張澶庣箹娑擃亜鍨介弬顓ㄧ礉閼挎粌宕熼幍宥勭窗閸︺劏绻橀崗銉︾埗閹村繐鎮楀☉鍫濄亼閵?
+      {/* 妫ｅ啯纾?闂佹彃绉堕崑锝呂涢埀顒勫蓟閵夈劎绠归梺鎻掔焿缁?
+         濞达絿濮崇粻锝夊礈瀹ュ洦鐣卞ù鐙呯悼閻栨粓宕ｉ婵嗗幋濞戞挸绉撮惃顒冪疀閸愩劌鐏╅柟鍝勵槷缁?`{currentScreen === 'menu' && ...}` 閺夆晜鐟ラ惇浼村礌閸涘府绱柕?
+         闊洤鎳橀妴蹇涘嫉婢跺海绠瑰☉鎿冧簻閸ㄤ粙寮銊х闁兼寧绮屽畷鐔煎箥瀹ュ嫮绐楅柛锔哄姀缁绘﹢宕楅妷锔惧煑闁规潙绻愰幃妤€鈽夐崼婵勪杭闁?
       */}
       {currentScreen === 'menu' && (
         <MainMenu onStartLevel={handleStartLevel} />
@@ -143,33 +140,27 @@ export default function App() {
         </div>
       )}
 
-      {/* 閸忓啿宕辩捄顖滄暠 */}
+      {/* 闁稿繐鍟垮畷杈╂崉椤栨粍鏆?*/}
       {currentScreen === 'level1' && (
         <Level1 onBack={() => setCurrentScreen('menu')} />
       )}
       
       
-      {/* 鐠囨洟鐛欓崷楦跨熅閻?*/}
+      {/* 閻犲洦娲熼悰娆撳捶妤﹁法鐔呴柣?*/}
       {currentScreen === 'playground' && (
         <Playground onBack={() => setCurrentScreen('menu')} />
       )}
 
-      {/* 棣冃?Bubble 濞村鐦禒顏囥€冮惄?*/}
+      {/* 妫ｅ唭?Bubble 婵炴潙顑堥惁顖涚椤忓洢鈧啴鎯?*/}
       {currentScreen === 'bubble-test' && (
         <BubbleTestDashboard onBack={() => setCurrentScreen('menu')} />
       )}
-
-            SVG Test
       {currentScreen === 'svg-test' && (
         <SvgTestDashboard onBack={() => setCurrentScreen('menu')} />
       )}
-
-            Agent Playground
       {currentScreen === 'agent-playground' && (
         <AgentPlayground onBack={() => setCurrentScreen('menu')} />
       )}
-
-            Light Test
       {currentScreen === 'light-test' && (
         <LivelyLightingComboPreview onBack={() => setCurrentScreen('menu')} />
       )}

@@ -63,13 +63,6 @@ class AgentSelfState(BaseModel):
     holding: Optional[ItemName] = Field(None, description="Item currently held by agent")
 
 
-class VisibleObject(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
-    id: ItemName = Field(..., description="Object unique id")
-    state: ObjectState = Field(..., description="Object state")
-    relation: Optional[str] = None
-
 
 class FailureType(str, Enum):
     SCHEMA_ERROR = "SCHEMA_ERROR"
@@ -107,8 +100,14 @@ class ObservationPayload(BaseModel):
     step_id: int = Field(..., description="Step number in this episode")
 
     timestamp: float
-    agent: AgentSelfState
-    nearby_objects: List[VisibleObject]
+    agent: Optional[AgentSelfState] = Field(
+        default=None,
+        description="Legacy agent view (optional when world_facts.agent is provided)",
+    )
+    world_facts: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Full omniscient world snapshot with entities/relations",
+    )
     global_task: str
     goal_spec: Optional[GoalSpecPayload] = Field(
         default=None,
@@ -192,6 +191,8 @@ class AgentStepResponse(BaseModel):
 
 
 ObservationPayload.model_rebuild()
+
+
 
 
 

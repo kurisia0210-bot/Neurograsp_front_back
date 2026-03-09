@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react'
+﻿import React, { useMemo, useState } from 'react'
 
 import { AgentBrainDashboard } from '../components/game/mechanics/AgentBrainDashboard'
 import { HoldBox } from '../components/game/mechanics/HoldBox'
-import { projectNearbyObjectsTable } from '../components/game/core/worldFacts'
+import { projectWorldFactsTable } from '../components/game/core/worldFacts'
 
 const CHAT_API_URL = 'http://127.0.0.1:8001/api/chat'
 
@@ -34,7 +34,7 @@ export function DashboardBooklet({
 
   const snapshotTableRows = useMemo(() => {
     if (!snapshotPreview) return []
-    return projectNearbyObjectsTable(snapshotPreview)
+    return projectWorldFactsTable(snapshotPreview)
   }, [snapshotPreview])
 
   const sendGreeting = async () => {
@@ -255,3 +255,4 @@ export function DashboardBooklet({
     </div>
   )
 }
+

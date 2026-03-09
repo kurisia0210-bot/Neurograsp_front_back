@@ -1,4 +1,4 @@
-export {
+﻿export {
   WORLD_FACTS_VERSION,
   WORLD_FACT_ENTITY_IDS,
   DEFAULT_AGENT_FACT,
@@ -9,8 +9,9 @@ export {
 
 export {
   readWorldFactsSnapshot,
-  projectNearbyObjectsTable,
+  projectWorldFactsTable,
   createWorldFactsReader
 } from './WorldFactsReader'
 
 export { createWorldFactsWriter } from './WorldFactsWriter'
+
