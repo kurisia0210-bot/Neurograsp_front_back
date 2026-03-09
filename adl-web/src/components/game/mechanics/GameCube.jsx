@@ -17,7 +17,9 @@ export function WholeCube({
   isHeldByAgent = false,
   allowClickThroughWhileDragging = false,
   onPickUp = () => {},
-  onPlace = () => {}
+  onPlace = () => {},
+  pickToInventory = false,
+  color = '#ff6b6b'
 }) {
   const meshRef = useRef()
   const pendingPickupRef = useRef(false)
@@ -49,14 +51,13 @@ export function WholeCube({
   useFrame((state) => {
     if (!isDragging || !meshRef.current) return
 
-    // 获取鼠标在3D空间中的位置
+    // Project pointer to drag plane
     state.raycaster.setFromCamera(state.pointer, state.camera)
     const targetPoint = new THREE.Vector3()
     const intersects = state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
 
     if (!intersects) {
-      // 如果平面相交失败，尝试使用备用方法
-      // 计算从相机到鼠标方向的射线
+      // Fallback raycast if direct plane intersection fails
       const mouse = new THREE.Vector2()
       mouse.x = (state.pointer.x * 0.5 + 0.5) * 2 - 1
       mouse.y = -(state.pointer.y * 0.5 + 0.5) * 2 + 1
@@ -88,6 +89,10 @@ export function WholeCube({
     if (!isDragging) {
       e.stopPropagation()
       pendingPickupRef.current = true
+      if (pickToInventory) {
+        onPickUp()
+        return
+      }
       setIsDragging(true)
       onPickUp()
       return
@@ -111,7 +116,7 @@ export function WholeCube({
       onPointerOut={() => (document.body.style.cursor = 'auto')}
     >
       <boxGeometry args={[CUBE_SIZE, CUBE_SIZE, CUBE_SIZE]} />
-      <meshStandardMaterial color={isDragging ? '#ff9f43' : '#ff6b6b'} />
+      <meshStandardMaterial color={isDragging ? '#ff9f43' : color} />
     </mesh>
   )
 }
@@ -128,13 +133,13 @@ export function HalfCube({ initialPos, targetPos, onPlaced, rotation, type, drag
   useFrame((state) => {
     if (isLocked || !isDragging || !meshRef.current) return
 
-    // 获取鼠标在3D空间中的位置
+    // Project pointer to drag plane
     state.raycaster.setFromCamera(state.pointer, state.camera)
     const targetPoint = new THREE.Vector3()
     const intersects = state.raycaster.ray.intersectPlane(floorPlane, targetPoint)
 
     if (!intersects) {
-      // 如果平面相交失败，尝试使用备用方法
+      // Fallback raycast if direct plane intersection fails
       const mouse = new THREE.Vector2()
       mouse.x = (state.pointer.x * 0.5 + 0.5) * 2 - 1
       mouse.y = -(state.pointer.y * 0.5 + 0.5) * 2 + 1

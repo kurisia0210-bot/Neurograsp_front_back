@@ -9,7 +9,7 @@ export async function mockPythonBackend(observationJSON) {
   const entities = worldFacts?.entities || {}
 
   const agent = entities.agent || { location: 'table_center', holding: null }
-  const cube = entities.red_cube || entities.apple_1 || null
+  const cube = entities.red_cube || entities.apple || null
   const fridgeDoor = entities.fridge_door || null
 
   if (agent.holding === null) {
@@ -22,7 +22,7 @@ export async function mockPythonBackend(observationJSON) {
     }
   }
 
-  if (agent.holding === 'red_cube' || agent.holding === 'apple_1') {
+  if (agent.holding === 'red_cube' || agent.holding === 'apple') {
     if (agent.location !== 'fridge_zone') {
       return {
         type: 'MOVE_TO',

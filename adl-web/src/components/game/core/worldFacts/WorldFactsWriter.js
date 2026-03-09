@@ -9,6 +9,35 @@ function getSafeAgentState(getAgentState) {
   }
 }
 
+function isMeatItemId(itemId) {
+  return itemId === WORLD_FACT_ENTITY_IDS.MEAT_RAW || itemId === WORLD_FACT_ENTITY_IDS.MEAT_HEATED
+}
+
+function isPlateItemId(itemId) {
+  return itemId === 'plate'
+}
+
+function isMeatLikeItemId(itemId) {
+  return isMeatItemId(itemId) || isPlateItemId(itemId)
+}
+
+function getCurrentMeatId(planeState) {
+  if (!planeState) return null
+  return planeState.isHeated ? WORLD_FACT_ENTITY_IDS.MEAT_HEATED : WORLD_FACT_ENTITY_IDS.MEAT_RAW
+}
+
+function resolveLegacyCubeId(targetItem, cubes) {
+  if (!targetItem) return targetItem
+
+  const hasExact = cubes.some((cube) => cube.id === targetItem)
+  if (hasExact) return targetItem
+
+  if ((targetItem === 'apple' || targetItem === 'apple_1') && cubes.some((cube) => cube.id === 'red_cube')) {
+    return 'red_cube'
+  }
+
+  return targetItem
+}
 export function createWorldFactsWriter({
   getAgentState,
   getCubes,
@@ -18,6 +47,8 @@ export function createWorldFactsWriter({
   setAgentLocation,
   pickUpCube,
   placeCube,
+  pickPlane,
+  placePlane,
   toggleFridgeDoor,
   toggleOvenDoor,
   updateCubePosition,
@@ -70,6 +101,7 @@ export function createWorldFactsWriter({
     const validTargets = new Set([
       WORLD_FACT_ENTITY_IDS.MEAT_RAW,
       WORLD_FACT_ENTITY_IDS.MEAT_HEATED,
+      'plate',
       WORLD_FACT_ENTITY_IDS.OVEN
     ])
 
@@ -93,6 +125,13 @@ export function createWorldFactsWriter({
       return {
         success: false,
         failure_reason: 'COOK failed: plane state not available'
+      }
+    }
+
+    if (planeState.state !== 'on_table') {
+      return {
+        success: false,
+        failure_reason: 'COOK failed: plate is not on table'
       }
     }
 
@@ -142,35 +181,89 @@ export function createWorldFactsWriter({
     const cubes = typeof getCubes === 'function' ? getCubes() : []
     const fridgeOpen = Boolean(typeof getFridgeOpen === 'function' ? getFridgeOpen() : false)
     const ovenOpen = Boolean(typeof getOvenOpen === 'function' ? getOvenOpen() : false)
+    const planeState = typeof getPlaneState === 'function' ? getPlaneState() : null
+    const currentMeatId = getCurrentMeatId(planeState)
+
     const interactionType = String(normalizedAction.interaction_type || 'NONE').toUpperCase()
     const targetItem = normalizedAction.target_item
 
     switch (interactionType) {
       case 'PICK': {
-        const pickTarget = cubes.find((cube) => cube.id === targetItem && cube.state === 'on_table')
-        if (!pickTarget) {
+        if (isMeatLikeItemId(targetItem)) {
+          if (!planeState || planeState.state === 'picked') {
+            return {
+              success: false,
+              failure_reason: `PICK failed: ${targetItem} is not pickable`
+            }
+          }
+
+          if (typeof pickPlane !== 'function' || !pickPlane()) {
+            return {
+              success: false,
+              failure_reason: `PICK failed: ${targetItem} state update failed`
+            }
+          }
+
           return {
-            success: false,
-            failure_reason: `PICK failed: ${targetItem} not on table`
+            success: true,
+            next_agent_state: {
+              ...getSafeAgentState(getAgentState),
+              holding: null
+            }
           }
         }
 
-        pickCube(targetItem)
+        const cubeTargetId = resolveLegacyCubeId(targetItem, cubes)
+        const pickTarget = cubes.find((cube) => cube.id === cubeTargetId && cube.state !== 'picked')
+        if (!pickTarget) {
+          return {
+            success: false,
+            failure_reason: `PICK failed: ${targetItem} is not pickable`
+          }
+        }
+
+        if (!pickCube(pickTarget.id)) {
+          return {
+            success: false,
+            failure_reason: `PICK failed: ${targetItem} state update failed`
+          }
+        }
+
         return {
           success: true,
           next_agent_state: {
             ...getSafeAgentState(getAgentState),
-            holding: targetItem
+            holding: null
           }
         }
       }
 
       case 'PLACE': {
-        const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
-        if (!holdingCube) {
+        const requestedSourceId = normalizedAction.source_item
+        const sourceCubeId = resolveLegacyCubeId(requestedSourceId, cubes)
+
+        const pickedCube = sourceCubeId
+          ? cubes.find((cube) => cube.id === sourceCubeId && cube.state === 'picked')
+          : cubes.find((cube) => cube.state === 'picked')
+
+        const meatPicked = Boolean(planeState && planeState.state === 'picked')
+        const requestIsMeat = isMeatLikeItemId(requestedSourceId)
+
+        let sourceType = null
+        let sourceId = null
+
+        if (pickedCube) {
+          sourceType = 'cube'
+          sourceId = pickedCube.id
+        } else if ((requestIsMeat || !requestedSourceId) && meatPicked) {
+          sourceType = 'meat'
+          sourceId = currentMeatId
+        }
+
+        if (!sourceType) {
           return {
             success: false,
-            failure_reason: 'PLACE failed: no item in hand'
+            failure_reason: 'PLACE failed: no picked item'
           }
         }
 
@@ -182,7 +275,22 @@ export function createWorldFactsWriter({
             }
           }
 
-          placeHeldCube(holdingCube.id, [-1.8, 1.2, -0.5], 'in_fridge')
+          if (sourceType === 'cube') {
+            if (!placeHeldCube(sourceId, [-1.8, 1.2, -0.5], 'in_fridge')) {
+              return {
+                success: false,
+                failure_reason: `PLACE failed: cannot place ${sourceId}`
+              }
+            }
+          } else {
+            if (typeof placePlane !== 'function' || !placePlane('in_fridge')) {
+              return {
+                success: false,
+                failure_reason: `PLACE failed: cannot place ${sourceId}`
+              }
+            }
+          }
+
           return {
             success: true,
             next_agent_state: {
@@ -193,7 +301,23 @@ export function createWorldFactsWriter({
         }
 
         if (targetItem === 'table_surface') {
-          placeHeldCube(holdingCube.id, holdingCube.position, 'on_table')
+          if (sourceType === 'cube') {
+            const cubePosition = pickedCube?.position || null
+            if (!placeHeldCube(sourceId, cubePosition, 'on_table')) {
+              return {
+                success: false,
+                failure_reason: `PLACE failed: cannot place ${sourceId}`
+              }
+            }
+          } else {
+            if (typeof placePlane !== 'function' || !placePlane('on_table')) {
+              return {
+                success: false,
+                failure_reason: `PLACE failed: cannot place ${sourceId}`
+              }
+            }
+          }
+
           return {
             success: true,
             next_agent_state: {
@@ -330,3 +454,9 @@ export function createWorldFactsWriter({
     executeIntent
   }
 }
+
+
+
+
+
+
