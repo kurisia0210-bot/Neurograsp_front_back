@@ -1,4 +1,4 @@
-﻿import {
+import {
   WORLD_FACTS_VERSION,
   WORLD_FACT_ENTITY_IDS,
   normalizeAgentFact,
@@ -6,9 +6,8 @@
   createRelation
 } from './WorldFactsOntology'
 
-function inferHoldingFromCubes(cubes = []) {
-  const holdingCube = cubes.find((cube) => cube.state === 'in_hand')
-  return holdingCube?.id || null
+function inferHoldingFromCubes() {
+  return null
 }
 
 function getMeatEntityId(planeState) {
@@ -86,9 +85,9 @@ function buildEntitiesMap({
       id: meatId,
       type: 'item',
       name: meatId,
-      state: 'on_table',
-      position: isPositionTriplet(planeState.position) ? planeState.position : null,
-      color: planeState.isHeated ? '#f97316' : '#22c55e'
+      state: planeState?.state || 'on_table',
+      position: isPositionTriplet(planeState?.position) ? planeState.position : null,
+      color: planeState?.isHeated ? '#f97316' : '#22c55e'
     }
   }
 
@@ -105,8 +104,8 @@ function buildRelationsList({ cubes = [], planeState = null }) {
   ]
 
   for (const cube of cubes) {
-    if (cube.state === 'in_hand') {
-      relations.push(createRelation(cube.id, 'held_by', WORLD_FACT_ENTITY_IDS.AGENT))
+    if (cube.state === 'picked') {
+      relations.push(createRelation(cube.id, 'inside', 'inventory'))
     } else if (cube.state === 'in_fridge') {
       relations.push(createRelation(cube.id, 'inside', WORLD_FACT_ENTITY_IDS.FRIDGE_MAIN))
     } else {
@@ -116,7 +115,13 @@ function buildRelationsList({ cubes = [], planeState = null }) {
 
   const meatId = getMeatEntityId(planeState)
   if (meatId) {
-    relations.push(createRelation(meatId, 'on', inferMeatSurface(planeState)))
+    if (planeState?.state === 'picked') {
+      relations.push(createRelation(meatId, 'inside', 'inventory'))
+    } else if (planeState?.state === 'in_fridge') {
+      relations.push(createRelation(meatId, 'inside', WORLD_FACT_ENTITY_IDS.FRIDGE_MAIN))
+    } else {
+      relations.push(createRelation(meatId, 'on', inferMeatSurface(planeState)))
+    }
   }
 
   return relations
@@ -207,5 +212,3 @@ export function createWorldFactsReader({
     }
   }
 }
-
-

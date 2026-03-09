@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 import { GameCamera } from '../game/GameCamera'
@@ -12,6 +13,10 @@ import { NotificationBubble } from '../game/items/NotificationBubble'
 import { useAgentSystem } from '../game/core/AgentSystem'
 import { useWorldStateManager } from '../game/core/WorldStateManager'
 import { createWorldFactsReader, createWorldFactsWriter } from '../game/core/worldFacts'
+import { FloraProgressBorder } from '../game/ui/FloraProgressBorder'
+import { HeldInventoryBar } from '../game/ui/HeldInventoryBar'
+import { CandyTabletPanel } from '../ui/CandyTabletPanel'
+import { DoctorAvatar } from '../game/avatar/DoctorAvatar'
 
 const TABLE_HEIGHT = 0.85
 const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2
@@ -39,7 +44,7 @@ function formatIntentLine(intent) {
 }
 
 function getPrimaryItemState(cubes) {
-  const item = (cubes || []).find((cube) => cube.id === 'apple_1')
+  const item = (cubes || []).find((cube) => cube.id === 'apple')
   return item?.state || 'on_table'
 }
 
@@ -90,6 +95,40 @@ function InteractiveFridge({ position, isOpen, onToggle }) {
   )
 }
 
+function OutsideWindowPanel() {
+  return (
+    <Html
+      position={[1.08, 2.58, -2.29]}
+      transform
+      center
+      scale={0.01}
+      style={{ pointerEvents: 'none' }}
+    >
+      <div
+        style={{
+          width: 7540,
+          height: 7540,
+          overflow: 'hidden'
+        }}
+      >
+        <img
+          src="/outside-window-scene.svg"
+          alt=""
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            display: 'block'
+          }}
+        />
+      </div>
+    </Html>
+  )
+}
+
 export function Level1({ onBack }) {
   const [showDebug, setShowDebug] = useState(false)
   const [actionLine, setActionLine] = useState('Action: waiting for next step')
@@ -99,7 +138,7 @@ export function Level1({ onBack }) {
     initialFridgeOpen: false,
     initialCubes: [
       {
-        id: 'apple_1',
+        id: 'apple',
         name: 'Apple',
         color: '#ff6b6b',
         position: CUBE_POS_TABLE,
@@ -140,7 +179,7 @@ export function Level1({ onBack }) {
   ])
 
   const agentSystem = useAgentSystem({
-    initialTask: 'put apple_1 in fridge',
+    initialTask: 'put apple in fridge',
     getWorldFacts: worldFactsReader.readSnapshot,
     executeWorldAction: worldFactsWriter.executeIntent,
     onTickComplete: (response) => {
@@ -152,6 +191,8 @@ export function Level1({ onBack }) {
   const cubeState = getPrimaryItemState(worldStateManager.cubes)
   const cubePosition =
     cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
+
+  const heldItems = cubeState === 'in_hand' ? [{ id: 'apple', label: 'Apple' }] : []
 
   const taskLine = 'Task: ' + (agentSystem.userInstruction?.trim() || 'No task set')
   const isVictory = cubeState === 'in_fridge'
@@ -195,7 +236,7 @@ export function Level1({ onBack }) {
   }
 
   const manualPick = () => {
-    runManualInteraction('PICK', 'apple_1')
+    runManualInteraction('PICK', 'apple')
   }
 
   const manualPlaceTable = () => {
@@ -208,6 +249,7 @@ export function Level1({ onBack }) {
 
   return (
     <div className="w-full h-full relative bg-[#edf3f7]">
+      <FloraProgressBorder />
       <button
         onClick={onBack}
         className="absolute top-4 left-4 z-50 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur text-gray-700 rounded-full shadow-sm hover:bg-gray-100 font-bold transition-all"
@@ -219,6 +261,17 @@ export function Level1({ onBack }) {
         <NotificationBubble text={taskLine} subText={actionLine} style={{ transform: 'translateY(-20px)' }} />
       </div>
 
+      <div className="absolute bottom-8 left-[23rem] -translate-x-1/2 z-50">
+        <HeldInventoryBar items={heldItems} activeIndex={0} />
+      </div>
+
+      <div className="absolute right-0 bottom-0 z-40 w-[32vh] h-[32vh] min-w-[300px] min-h-[300px] max-w-[420px] max-h-[420px]">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[75%] h-[75%] rounded-[24px] bg-[#E6EFEA] shadow-md overflow-hidden border border-white/70">
+          <DoctorAvatar status="idle" className="w-full h-full" disableEyeTracking={true} />
+        </div>
+        <CandyTabletPanel />
+      </div>
+
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center">
         <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
           <span className="text-sm font-bold text-gray-600">Task:</span>
@@ -227,7 +280,7 @@ export function Level1({ onBack }) {
             value={agentSystem.userInstruction}
             onChange={(e) => handleTaskChange(e.target.value)}
             className="bg-transparent text-gray-800 outline-none w-80 text-sm"
-            placeholder="e.g. put apple_1 in fridge"
+            placeholder="e.g. put apple in fridge"
           />
         </div>
 
@@ -331,13 +384,14 @@ export function Level1({ onBack }) {
         </div>
       )}
 
-      <Canvas orthographic>
+      <Canvas orthographic gl={{ alpha: true }} style={{ background: 'transparent' }} className="relative z-10">
         <GameCamera />
         <PlaygroundLightingRig lighting={lighting} rawColorMode={false} showHelperOverride={false} />
 
-        <Floor width={12} depth={12} color="#8199aa" />
+        <Floor width={10} depth={10} color="#8199aa" />
         <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color="#ffc697" />
         <Wall position={[0, 2.5, -2.5]} hasWindow={true} color="#f8dec2" />
+        <OutsideWindowPanel />
 
         <Table position={[0, 0, -1.68]} scale={[1.2, 1.2, 1.44]} />
         <InteractiveFridge

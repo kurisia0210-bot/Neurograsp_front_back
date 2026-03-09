@@ -16,7 +16,7 @@ class AgentActionType(str, Enum):
 
 
 class ItemName(str, Enum):
-    APPLE_1 = "apple_1"
+    APPLE = "apple"
     RED_CUBE = "red_cube"
     MEAT_RAW = "meat_raw"
     MEAT_HEATED = "meat_heated"
@@ -191,8 +191,3 @@ class AgentStepResponse(BaseModel):
 
 
 ObservationPayload.model_rebuild()
-
-
-
-
-

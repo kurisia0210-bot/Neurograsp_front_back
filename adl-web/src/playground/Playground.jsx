@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 
 import { GameCamera } from '../components/game/GameCamera'
@@ -24,6 +25,9 @@ const DEFAULT_SURFACE_COLORS = {
   floor: '#8199aa',
   fridge: '#dfe6e9'
 }
+const WINDOW_IMAGE_DEFAULT_POS = { x: 1.08, y: 2.58, z: -2.29 }
+const WINDOW_IMAGE_PIXEL_SIZE = 7540
+
 
 function shadeHex(hex, factor) {
   const c = new THREE.Color(hex)
@@ -221,6 +225,40 @@ function normalizeHexColor(value, fallback) {
   return fallback
 }
 
+function WindowImagePlane({ position, size }) {
+  return (
+    <Html
+      position={[position.x, position.y, position.z]}
+      transform
+      center
+      scale={0.01}
+      style={{ pointerEvents: 'none' }}
+    >
+      <div
+        style={{
+          width: size,
+          height: size,
+          overflow: 'hidden'
+        }}
+      >
+        <img
+          src="/outside-window-scene.svg"
+          alt=""
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            display: 'block'
+          }}
+        />
+      </div>
+    </Html>
+  )
+}
+
 export function Playground({ onBack }) {
   const [fridgeDoorOpen, setFridgeDoorOpen] = useState(false)
   const [cubeState, setCubeState] = useState('on_table')
@@ -231,6 +269,8 @@ export function Playground({ onBack }) {
   const [floorHex, setFloorHex] = useState(DEFAULT_SURFACE_COLORS.floor)
   const [fridgeHex, setFridgeHex] = useState(DEFAULT_SURFACE_COLORS.fridge)
   const [showColorDebugger, setShowColorDebugger] = useState(false)
+  const [windowImagePos, setWindowImagePos] = useState(WINDOW_IMAGE_DEFAULT_POS)
+  const [windowImageSize, setWindowImageSize] = useState(WINDOW_IMAGE_PIXEL_SIZE)
   const lighting = usePlaygroundLightingSettings()
 
   const applyHexColor = (key, value) => {
@@ -260,6 +300,20 @@ export function Playground({ onBack }) {
   const cubePosition =
     cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
 
+
+  const updateWindowImageAxis = (axis, value) => {
+    const numeric = Number(value)
+    if (Number.isNaN(numeric)) return
+    setWindowImagePos((prev) => ({ ...prev, [axis]: numeric }))
+  }
+
+  const updateWindowImageSize = (value) => {
+    const numeric = Number(value)
+    if (Number.isNaN(numeric)) return
+    const clamped = Math.max(120, Math.min(50000, numeric))
+    setWindowImageSize(clamped)
+  }
+
   return (
     <div className="w-full h-screen relative bg-[#edf3f7] overflow-hidden">
       {onBack && (
@@ -275,6 +329,111 @@ export function Playground({ onBack }) {
         <div className="font-bold text-sm mb-2">Playground (Level1 Layout)</div>
         <div className="mb-2">Door: {fridgeDoorOpen ? 'open' : 'closed'}</div>
         <div className="mb-3">Cube: {cubeState}</div>
+
+
+        <div className="mb-3 border-t border-gray-200 pt-2">
+          <div className="font-semibold mb-2">Window Image Position Test</div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">X</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="-1"
+                max="3"
+                step="0.01"
+                value={windowImagePos.x}
+                onChange={(e) => updateWindowImageAxis('x', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={windowImagePos.x}
+                onChange={(e) => updateWindowImageAxis('x', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Y</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="4"
+                step="0.01"
+                value={windowImagePos.y}
+                onChange={(e) => updateWindowImageAxis('y', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={windowImagePos.y}
+                onChange={(e) => updateWindowImageAxis('y', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Z</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="-50"
+                max="-2.3"
+                step="0.01"
+                value={windowImagePos.z}
+                onChange={(e) => updateWindowImageAxis('z', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={windowImagePos.z}
+                onChange={(e) => updateWindowImageAxis('z', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => setWindowImagePos(WINDOW_IMAGE_DEFAULT_POS)}
+              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
+            >
+              Reset XYZ
+            </button>
+          </div>
+          <div className="text-[11px] text-gray-500">
+            Current: [{windowImagePos.x.toFixed(2)}, {windowImagePos.y.toFixed(2)}, {windowImagePos.z.toFixed(2)}]
+          </div>
+        </div>
+
+        <div className="mb-3 border-t border-gray-200 pt-2">
+          <div className="font-semibold mb-2">Window Image Size</div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Window Size (px)</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="120"
+                max="50000"
+                step="1"
+                value={windowImageSize}
+                onChange={(e) => updateWindowImageSize(e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="1"
+                value={windowImageSize}
+                onChange={(e) => updateWindowImageSize(e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="text-[11px] text-gray-500">Current size: {windowImageSize}px</div>
+        </div>
 
         <div className="mb-3 border-t border-gray-200 pt-2">
           <div className="font-semibold mb-2">Surface Color Painter</div>
@@ -410,6 +569,7 @@ export function Playground({ onBack }) {
         <Floor width={12} depth={12} color={surfaceColors.floor} />
         <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color={surfaceColors.wallTest} />
         <Wall position={[0, 2.5, -2.5]} hasWindow={true} color={surfaceColors.wallMain} />
+        <WindowImagePlane position={windowImagePos} size={windowImageSize} />
         <WallColorDebugger color={surfaceColors.wallMain} visible={showColorDebugger} />
 
         <Table position={[0, 0, -1.68]} scale={[1.2, 1.2, 1.44]} />

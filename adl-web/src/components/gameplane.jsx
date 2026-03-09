@@ -12,7 +12,9 @@ export function GamePlane({
   size = DEFAULT_SIZE,
   dragHeight = DEFAULT_DRAG_HEIGHT,
   isHeated = false,
-  onPositionChange
+  onPositionChange,
+  draggable = true,
+  onPress
 }) {
   const [isDragging, setIsDragging] = useState(false)
 
@@ -21,7 +23,7 @@ export function GamePlane({
   }, [dragHeight])
 
   useFrame((state) => {
-    if (!isDragging) return
+    if (!draggable || !isDragging) return
 
     state.raycaster.setFromCamera(state.pointer, state.camera)
     const targetPoint = new THREE.Vector3()
@@ -40,9 +42,16 @@ export function GamePlane({
       rotation={[-Math.PI / 2, 0, 0]}
       onClick={(event) => {
         event.stopPropagation()
+
+        if (typeof onPress === 'function') {
+          onPress(event)
+        }
+
+        if (!draggable) return
         setIsDragging((prev) => !prev)
       }}
       onPointerOver={() => {
+        if (!draggable) return
         document.body.style.cursor = isDragging ? 'grabbing' : 'grab'
       }}
       onPointerOut={() => {

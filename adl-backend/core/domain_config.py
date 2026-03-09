@@ -1,8 +1,8 @@
 """Centralized domain constants for the current kitchen MVP."""
 
 # Primary interactive item (canonical id + backward-compatible ids).
-OBJECT_ID_PRIMARY_ITEM = "apple_1"
-OBJECT_ID_PRIMARY_ITEM_ALIASES = ("apple_1", "red_cube")
+OBJECT_ID_PRIMARY_ITEM = "apple"
+OBJECT_ID_PRIMARY_ITEM_ALIASES = ("apple", "red_cube")
 ITEM_NL_LABEL = "apple"
 
 # Heat target (plane mapped as meat).
@@ -39,7 +39,7 @@ TASK_VERBS_MOVE = ("move", "go")
 TASK_VERBS_COOK = ("cook", "heat")
 
 TASK_TOKENS_PUT_VERBS = ("put", "place")
-TASK_TOKENS_ITEM = ("apple", "apple_1", "red cube", "red_cube", "cube")
+TASK_TOKENS_ITEM = ("apple", "red cube", "red_cube", "cube")
 TASK_TOKENS_FRIDGE = ("fridge",)
 TASK_TOKENS_OVEN = ("oven", "stove")
 TASK_TOKENS_HEAT = ("meat", "meat_raw", "meat_heated", "plane", "plate")
@@ -86,4 +86,3 @@ __all__ = [
     "TASK_TOKENS_HEAT",
     "MOVE_TARGET_BY_KEYWORD",
 ]
-

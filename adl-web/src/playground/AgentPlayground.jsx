@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrthographicCamera } from '@react-three/drei'
 
@@ -16,33 +16,25 @@ import { GameOven } from '../components/gameoven'
 import { GamePlane } from '../components/gameplane'
 import { DashboardBooklet } from './DashboardBooklet'
 
-const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5] // [x, z]
-const FRIDGE_MAIN_DROP_HALF_SIZE = [0.68, 0.52] // [halfX, halfZ]
-const FRIDGE_MAIN_SNAP_POSITION = [-1.8, 1.2, -0.5]
+const FRIDGE_MAIN_DROP_CENTER = [-2.35, -0.5]
+const FRIDGE_MAIN_DROP_HALF_SIZE = [0.68, 0.52]
 
-const OVEN_MAIN_DROP_CENTER = [2.75, -0.2] // [x, z]
-const OVEN_MAIN_DROP_HALF_SIZE = [0.34, 0.24] // [halfX, halfZ]
-const OVEN_MAIN_SNAP_POSITION = [2.75, 0.95, -0.28]
+const OVEN_MAIN_DROP_CENTER = [2.75, -0.2]
+const OVEN_MAIN_DROP_HALF_SIZE = [0.34, 0.24]
 
 const PLANE_INITIAL_POSITION = [0.4, 1.701, -0.4]
-const STATIC_HELD_ANCHOR = [1.84, 1.26, 2.02]
+const INVENTORY_SLOT_COUNT = 6
 
-function isInFridgeMainDropZone(position) {
-  if (!Array.isArray(position)) return false
-  const [x, , z] = position
-  return (
-    Math.abs(x - FRIDGE_MAIN_DROP_CENTER[0]) <= FRIDGE_MAIN_DROP_HALF_SIZE[0] &&
-    Math.abs(z - FRIDGE_MAIN_DROP_CENTER[1]) <= FRIDGE_MAIN_DROP_HALF_SIZE[1]
-  )
-}
+const ITEM_ICON = Object.freeze({
+  red_cube: '[R]',
+  apple: '[A]',
+  meat_raw: '[M]',
+  meat_heated: '[H]',
+  plate: '[P]'
+})
 
-function isInOvenMainDropZone(position) {
-  if (!Array.isArray(position)) return false
-  const [x, , z] = position
-  return (
-    Math.abs(x - OVEN_MAIN_DROP_CENTER[0]) <= OVEN_MAIN_DROP_HALF_SIZE[0] &&
-    Math.abs(z - OVEN_MAIN_DROP_CENTER[1]) <= OVEN_MAIN_DROP_HALF_SIZE[1]
-  )
+function getItemIcon(itemId) {
+  return ITEM_ICON[itemId] || '[?]'
 }
 
 function toHistoryEntry(response) {
@@ -119,8 +111,6 @@ function toBubbleFromExecution(intent, executionResult, fallbackError = null) {
 }
 
 export function AgentPlayground({ onBack }) {
-  const autoSnapLockRef = useRef(false)
-
   const worldStateManager = useWorldStateManager({
     initialFridgeOpen: false,
     initialOvenOpen: false,
@@ -166,6 +156,8 @@ export function AgentPlayground({ onBack }) {
       setAgentLocation: worldStateManager.setAgentLocation,
       pickUpCube: worldStateManager.pickUpCube,
       placeCube: worldStateManager.placeCube,
+      pickPlane: worldStateManager.pickPlane,
+      placePlane: worldStateManager.placePlane,
       toggleFridgeDoor: worldStateManager.toggleFridgeDoor,
       toggleOvenDoor: worldStateManager.toggleOvenDoor,
       updateCubePosition: worldStateManager.updateCubePosition,
@@ -180,6 +172,8 @@ export function AgentPlayground({ onBack }) {
     worldStateManager.setAgentLocation,
     worldStateManager.pickUpCube,
     worldStateManager.placeCube,
+    worldStateManager.pickPlane,
+    worldStateManager.placePlane,
     worldStateManager.toggleFridgeDoor,
     worldStateManager.toggleOvenDoor,
     worldStateManager.updateCubePosition,
@@ -194,6 +188,7 @@ export function AgentPlayground({ onBack }) {
     status: 'NO_INTENT',
     message: ''
   })
+  const [selectedInventoryId, setSelectedInventoryId] = useState(null)
 
   const handleReadInitialSnapshot = () => {
     const snapshot = worldFactsReader.readSnapshot()
@@ -206,7 +201,6 @@ export function AgentPlayground({ onBack }) {
       message: 'Initial world snapshot loaded'
     })
     setBehaviorLine('Action: read initial world snapshot')
-    console.log('[AgentPlayground] Initial world snapshot:', snapshot)
   }
 
   const agentSystem = useAgentSystem({
@@ -239,13 +233,28 @@ export function AgentPlayground({ onBack }) {
         })
       }
     },
-    onActionExecuted: (action, newState) => {
-      console.log('[AgentPlayground] Action executed:', action?.type, newState)
-    },
     getWorldFacts: worldFactsReader.readSnapshot,
     executeWorldAction: worldFactsWriter.executeIntent
   })
+
   const taskLine = `Task: ${agentSystem.userInstruction?.trim() || 'No task set'}`
+  const currentMeatId = worldStateManager.planeState.isHeated ? 'meat_heated' : 'meat_raw'
+
+  const inventoryItems = useMemo(() => {
+    const cubeItems = worldStateManager.cubes
+      .filter((cube) => cube.state === 'picked')
+      .map((cube) => ({ id: cube.id, state: cube.state }))
+
+    if (worldStateManager.planeState.state === 'picked') {
+      cubeItems.push({ id: 'plate', state: 'picked' })
+    }
+
+    return cubeItems
+  }, [worldStateManager.cubes, worldStateManager.planeState.state, currentMeatId])
+
+  const inventorySlots = useMemo(() => {
+    return Array.from({ length: INVENTORY_SLOT_COUNT }, (_, idx) => inventoryItems[idx] || null)
+  }, [inventoryItems])
 
   useEffect(() => {
     if (!actionBubble.visible) return
@@ -254,6 +263,22 @@ export function AgentPlayground({ onBack }) {
     }, 1400)
     return () => clearTimeout(timer)
   }, [actionBubble.visible])
+
+  useEffect(() => {
+    if (inventoryItems.length === 0) {
+      if (selectedInventoryId !== null) {
+        setSelectedInventoryId(null)
+      }
+      return
+    }
+
+    const selectedStillExists = selectedInventoryId
+      ? inventoryItems.some((item) => item.id === selectedInventoryId)
+      : false
+
+    if (selectedStillExists) return
+    setSelectedInventoryId(inventoryItems[0].id)
+  }, [inventoryItems, selectedInventoryId])
 
   const resetActionBubble = () => {
     setActionBubble({
@@ -264,12 +289,12 @@ export function AgentPlayground({ onBack }) {
   }
 
   const handleResetAgent = () => {
-    autoSnapLockRef.current = false
     agentSystem.resetAgent()
     worldStateManager.resetWorldState()
     setIntentHistory([])
     setSnapshotPreview(null)
     setBehaviorLine('Action: waiting for next step')
+    setSelectedInventoryId(null)
     resetActionBubble()
   }
 
@@ -291,6 +316,54 @@ export function AgentPlayground({ onBack }) {
       message: triggerResult.message
     })
     setBehaviorLine(`Action: heat ${targetItem}`)
+  }
+
+  const handlePickToInventory = (cubeId) => {
+    const intent = {
+      type: ActionType.INTERACT,
+      interaction_type: InteractionType.PICK,
+      target_item: cubeId,
+      content: `Manual pick ${cubeId}`
+    }
+
+    const committed = agentSystem.dispatchIntent(intent)
+    const triggerResult = toBubbleFromExecution(intent, committed?.executionResult)
+
+    setActionBubble({
+      visible: true,
+      status: triggerResult.status,
+      message: triggerResult.message
+    })
+
+    if (committed?.executionResult?.success) {
+      setSelectedInventoryId(cubeId)
+      setBehaviorLine(`Action: pick ${cubeId} (inventory)`)
+    }
+  }
+
+  const handlePlaceFromInventory = (targetItem) => {
+    if (!selectedInventoryId) return
+
+    const placeIntent = {
+      type: ActionType.INTERACT,
+      interaction_type: InteractionType.PLACE,
+      target_item: targetItem,
+      source_item: selectedInventoryId,
+      content: `Manual place ${selectedInventoryId} -> ${targetItem}`
+    }
+
+    const committed = agentSystem.dispatchIntent(placeIntent)
+    const triggerResult = toBubbleFromExecution(placeIntent, committed?.executionResult)
+
+    setActionBubble({
+      visible: true,
+      status: triggerResult.status,
+      message: triggerResult.message
+    })
+
+    if (committed?.executionResult?.success) {
+      setBehaviorLine(`Action: place ${selectedInventoryId} -> ${targetItem}`)
+    }
   }
 
   return (
@@ -328,6 +401,52 @@ export function AgentPlayground({ onBack }) {
         </button>
       </div>
 
+      <div className="absolute top-24 left-6 z-[9999] w-64 bg-slate-900/95 border-2 border-cyan-400 rounded-lg p-3 text-xs text-slate-100 shadow-2xl">
+        <div className="font-semibold text-cyan-300">Inventory</div>
+        <div className="mt-2 text-[10px] text-slate-400">Click item to pick. Click slot to select.</div>
+
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {inventorySlots.map((item, index) => {
+            const selected = item && item.id === selectedInventoryId
+            return (
+              <button
+                key={`slot_${index}`}
+                onClick={() => item && setSelectedInventoryId(item.id)}
+                disabled={!item}
+                className={`rounded border px-2 py-1 text-left transition-colors ${
+                  selected
+                    ? 'border-cyan-300 bg-cyan-900/40'
+                    : 'border-slate-700 bg-slate-950/60 hover:bg-slate-800 disabled:opacity-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold leading-none">{item ? getItemIcon(item.id) : '[ ]'}</span>
+                  <span className="truncate">{item ? item.id : 'empty'}</span>
+                </div>
+
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => handlePlaceFromInventory('table_surface')}
+            disabled={!selectedInventoryId || agentSystem.isThinking}
+            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
+          >
+            Place Table
+          </button>
+          <button
+            onClick={() => handlePlaceFromInventory('fridge_main')}
+            disabled={!selectedInventoryId || agentSystem.isThinking}
+            className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
+          >
+            Place Fridge
+          </button>
+        </div>
+      </div>
+
       <Canvas>
         <OrthographicCamera
           makeDefault
@@ -344,12 +463,15 @@ export function AgentPlayground({ onBack }) {
           isOpen={worldStateManager.ovenOpen}
           onToggleDoor={worldStateManager.toggleOvenDoor}
         />
-        <GamePlane
-          position={worldStateManager.planeState.position}
-          isHeated={worldStateManager.planeState.isHeated}
-          onPositionChange={worldStateManager.setPlanePosition}
-        />
-
+        {worldStateManager.planeState.state === 'on_table' && (
+          <GamePlane
+            position={worldStateManager.planeState.position}
+            isHeated={worldStateManager.planeState.isHeated}
+            onPositionChange={worldStateManager.setPlanePosition}
+            draggable={false}
+            onPress={() => handlePickToInventory('plate')}
+          />
+        )}
         <mesh position={[OVEN_MAIN_DROP_CENTER[0], 0.95, OVEN_MAIN_DROP_CENTER[1]]}>
           <boxGeometry args={[OVEN_MAIN_DROP_HALF_SIZE[0] * 2, 0.55, OVEN_MAIN_DROP_HALF_SIZE[1] * 2]} />
           <meshStandardMaterial
@@ -367,66 +489,21 @@ export function AgentPlayground({ onBack }) {
           dropHalfSize={FRIDGE_MAIN_DROP_HALF_SIZE}
         />
 
-        {worldStateManager.cubes.map((cube) => (
-          <WholeCube
-            key={cube.id}
-            position={cube.position}
-            heldAnchor={STATIC_HELD_ANCHOR}
-            dragHeight={cube.dragHeight}
-            isHeldByAgent={cube.state === 'in_hand'}
-            allowClickThroughWhileDragging={false}
-            onDrag={(newPos) => {
-              const nextPosition = Array.isArray(newPos) ? newPos : newPos?.position
-              if (!Array.isArray(nextPosition)) return
-              worldFactsWriter.updateCubeDragPosition(cube.id, nextPosition)
-
-              if (autoSnapLockRef.current) return
-              if (cube.state !== 'in_hand') return
-
-              if (worldStateManager.fridgeOpen && isInFridgeMainDropZone(nextPosition)) {
-                autoSnapLockRef.current = true
-                worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-                setActionBubble({
-                  visible: true,
-                  status: 'SUCCESS',
-                  message: 'Auto snap: red_cube -> fridge_main'
-                })
-                setBehaviorLine('Action: place red_cube -> fridge_main (auto snap)')
-                return
-              }
-
-              if (worldStateManager.ovenOpen && isInOvenMainDropZone(nextPosition)) {
-                autoSnapLockRef.current = true
-                worldFactsWriter.placeHeldCube(cube.id, OVEN_MAIN_SNAP_POSITION, 'on_table')
-                setActionBubble({
-                  visible: true,
-                  status: 'SUCCESS',
-                  message: 'Auto snap: red_cube -> oven_main'
-                })
-                setBehaviorLine('Action: place red_cube -> oven_main (auto snap)')
-              }
-            }}
-            onPickUp={() => {
-              autoSnapLockRef.current = false
-              worldFactsWriter.pickCube(cube.id)
-            }}
-            onPlace={() => {
-              const currentPos = cube.position
-              const inFridgeZone = isInFridgeMainDropZone(currentPos)
-              const inOvenZone = isInOvenMainDropZone(currentPos)
-
-              if (worldStateManager.fridgeOpen && inFridgeZone) {
-                worldFactsWriter.placeHeldCube(cube.id, FRIDGE_MAIN_SNAP_POSITION, 'in_fridge')
-              } else if (worldStateManager.ovenOpen && inOvenZone) {
-                worldFactsWriter.placeHeldCube(cube.id, OVEN_MAIN_SNAP_POSITION, 'on_table')
-              } else {
-                worldFactsWriter.placeHeldCube(cube.id, currentPos, 'on_table')
-              }
-            }}
-            slicingZonePos={[-3, 0, -0.5]}
-            slicingZoneSize={[1, 1]}
-          />
-        ))}
+        {worldStateManager.cubes
+          .filter((cube) => cube.state !== 'picked')
+          .map((cube) => (
+            <WholeCube
+              key={cube.id}
+              position={cube.position}
+              dragHeight={cube.dragHeight}
+              isHeldByAgent={false}
+              color={cube.color}
+              pickToInventory
+              onPickUp={() => handlePickToInventory(cube.id)}
+              slicingZonePos={[-3, 0, -0.5]}
+              slicingZoneSize={[1, 1]}
+            />
+          ))}
 
         <Grid position={[0, 0.01, 0]} args={[12, 12]} cellColor="#636e72" sectionSize={3} />
       </Canvas>
@@ -445,3 +522,4 @@ export function AgentPlayground({ onBack }) {
     </div>
   )
 }
+

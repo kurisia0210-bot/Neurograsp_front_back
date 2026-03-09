@@ -30,6 +30,29 @@ function normalizeWorldSnapshot(rawWorldState) {
   }
 }
 
+function sanitizeEntitiesForBackend(rawEntities) {
+  const entities = rawEntities || {}
+  const sanitized = {}
+
+  for (const [entityId, entity] of Object.entries(entities)) {
+    if (!entity || typeof entity !== 'object') {
+      sanitized[entityId] = entity
+      continue
+    }
+
+    const { position, color, ...rest } = entity
+    sanitized[entityId] = rest
+  }
+
+  return sanitized
+}
+
+function buildBackendWorldFacts(worldSnapshot) {
+  return {
+    entities: sanitizeEntitiesForBackend(worldSnapshot.entities),
+    relations: Array.isArray(worldSnapshot.relations) ? worldSnapshot.relations : []
+  }
+}
 const AgentSystemContext = createContext(null)
 
 export function useAgentSystem({
@@ -39,7 +62,7 @@ export function useAgentSystem({
   getWorldState,
   executeWorldAction,
   resolveGoalSpec: resolveGoalSpecOverride,
-  initialTask = 'pick apple_1',
+  initialTask = 'pick apple',
   backendUrl = 'http://127.0.0.1:8001/api/tick',
   autoExecuteBackendIntent = true
 }) {
@@ -97,10 +120,7 @@ export function useAgentSystem({
         location: worldAgent.location,
         holding: worldAgent.holding
       },
-      world_facts: {
-        entities: worldSnapshot.entities || {},
-        relations: Array.isArray(worldSnapshot.relations) ? worldSnapshot.relations : []
-      },
+      world_facts: buildBackendWorldFacts(worldSnapshot),
       global_task: userInstruction,
       goal_spec: worldSnapshot.goal_spec || parsedGoalSpec || null,
       last_action: lastAction,
@@ -480,5 +500,3 @@ export function useAgentSystemContext() {
   }
   return context
 }
-
-

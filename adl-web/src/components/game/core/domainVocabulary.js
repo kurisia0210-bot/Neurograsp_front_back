@@ -1,5 +1,5 @@
 export const ITEM_NAMES = Object.freeze([
-  'apple_1',
+  'apple',
   'red_cube',
   'meat_raw',
   'meat_heated',
@@ -20,12 +20,10 @@ export const POI_NAMES = Object.freeze([
 ])
 
 export const ITEM_ALIAS = Object.freeze({
-  apple: 'apple_1',
-  'apple 1': 'apple_1',
-  apple_1: 'apple_1',
-  cube: 'apple_1',
-  'red cube': 'apple_1',
-  red_cube: 'apple_1',
+  apple: 'apple',
+  cube: 'red_cube',
+  'red cube': 'red_cube',
+  red_cube: 'red_cube',
 
   meat: 'meat_raw',
   'raw meat': 'meat_raw',
@@ -78,4 +76,3 @@ export const CONTAINER_ALIAS = Object.freeze({
   stove: 'oven',
   oven: 'oven'
 })
-

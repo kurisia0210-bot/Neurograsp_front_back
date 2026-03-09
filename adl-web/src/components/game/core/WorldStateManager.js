@@ -8,12 +8,12 @@ const DEFAULT_AGENT_STATE = {
 
 const DEFAULT_PLANE_STATE = {
   position: [0.4, 1.701, -0.4],
-  isHeated: false
+  isHeated: false,
+  state: 'on_table'
 }
 
-function inferHoldingFromCubes(cubeList = []) {
-  const holdingCube = cubeList.find((cube) => cube.state === 'in_hand')
-  return holdingCube?.id || null
+function inferHoldingFromCubes() {
+  return null
 }
 
 function normalizeAgentState(rawAgentState, cubes = []) {
@@ -27,9 +27,13 @@ function normalizeAgentState(rawAgentState, cubes = []) {
 
 function normalizePlaneState(rawPlaneState) {
   const safeRaw = rawPlaneState || {}
+  const safeState =
+    safeRaw.state === 'picked' || safeRaw.state === 'in_fridge' ? safeRaw.state : 'on_table'
+
   return {
     position: isPositionTriplet(safeRaw.position) ? safeRaw.position : [...DEFAULT_PLANE_STATE.position],
-    isHeated: Boolean(safeRaw.isHeated)
+    isHeated: Boolean(safeRaw.isHeated),
+    state: safeState
   }
 }
 
@@ -72,34 +76,76 @@ export function useWorldStateManager(options = {}) {
   const [planeState, setPlaneState] = useState(initialStateRef.current.planeState)
 
   const getHoldingCube = useCallback(() => {
-    return cubes.find((cube) => cube.state === 'in_hand')
-  }, [cubes])
-
-  const pickUpCube = useCallback((cubeId) => {
-    setCubes((prevCubes) =>
-      prevCubes.map((cube) => {
-        if (cube.id === cubeId && cube.state === 'on_table') {
-          console.log(`PICK: ${cube.name}`)
-          return { ...cube, state: 'in_hand' }
-        }
-        return cube
-      })
-    )
-    setAgentState((prev) => ({ ...prev, holding: cubeId }))
+    return null
   }, [])
 
+  const pickUpCube = useCallback((cubeId) => {
+    if (!cubeId) return false
+
+    const canPick = cubes.some((cube) => cube.id === cubeId && cube.state !== 'picked')
+    if (!canPick) return false
+
+    setCubes((prevCubes) => {
+      let pickedOne = false
+
+      return prevCubes.map((cube) => {
+        const shouldPickThisCube = !pickedOne && cube.id === cubeId && cube.state !== 'picked'
+        if (shouldPickThisCube) {
+          pickedOne = true
+          console.log(`PICK: ${cube.name}`)
+          return { ...cube, state: 'picked' }
+        }
+
+        return cube
+      })
+    })
+
+    setAgentState((prev) => ({ ...prev, holding: null }))
+    return true
+  }, [cubes])
+
   const placeCube = useCallback((cubeId, position, newState = 'on_table') => {
+    if (!cubeId) return false
+
+    let placed = false
     setCubes((prevCubes) =>
       prevCubes.map((cube) => {
-        if (cube.id === cubeId && cube.state === 'in_hand') {
+        if (!placed && cube.id === cubeId && cube.state === 'picked') {
+          placed = true
           console.log(`PLACE: ${cube.name} -> ${newState}`)
           return { ...cube, state: newState, position }
         }
         return cube
       })
     )
+
     setAgentState((prev) => ({ ...prev, holding: null }))
+    return placed
   }, [])
+
+  const pickPlane = useCallback(() => {
+    if (planeState.state === 'picked') return false
+
+    setPlaneState((prev) => ({
+      ...prev,
+      state: 'picked'
+    }))
+    setAgentState((prev) => ({ ...prev, holding: null }))
+    return true
+  }, [planeState.state])
+
+  const placePlane = useCallback((newState = 'on_table', position = null) => {
+    if (planeState.state !== 'picked') return false
+
+    const safeNextState = newState === 'in_fridge' ? 'in_fridge' : 'on_table'
+    setPlaneState((prev) => ({
+      ...prev,
+      state: safeNextState,
+      position: isPositionTriplet(position) ? [...position] : prev.position
+    }))
+    setAgentState((prev) => ({ ...prev, holding: null }))
+    return true
+  }, [planeState.state])
 
   const updateCubePosition = useCallback((cubeId, position) => {
     if (!isPositionTriplet(position)) return false
@@ -128,6 +174,7 @@ export function useWorldStateManager(options = {}) {
 
       if (!next) {
         setPlaneState((prevPlane) => {
+          if (prevPlane.state !== 'on_table') return prevPlane
           if (prevPlane.isHeated) return prevPlane
           if (!isPlaneInOvenZone(prevPlane.position)) return prevPlane
 
@@ -188,7 +235,8 @@ export function useWorldStateManager(options = {}) {
     setCubes(initialStateRef.current.cubes.map((c) => ({ ...c, position: [...c.position] })))
     setPlaneState({
       position: [...initialStateRef.current.planeState.position],
-      isHeated: initialStateRef.current.planeState.isHeated
+      isHeated: initialStateRef.current.planeState.isHeated,
+      state: initialStateRef.current.planeState.state || 'on_table'
     })
     console.log('World state reset')
   }, [])
@@ -203,6 +251,8 @@ export function useWorldStateManager(options = {}) {
 
     pickUpCube,
     placeCube,
+    pickPlane,
+    placePlane,
     updateCubePosition,
     toggleFridgeDoor,
     toggleOvenDoor,
