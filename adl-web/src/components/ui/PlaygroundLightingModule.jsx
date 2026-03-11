@@ -54,15 +54,15 @@ export const DEFAULT_PLAYGROUND_LIGHTING = {
   },
   wall: {
     enabled: true,
-    color: '#ebff2f',
+    color: '#ffffff',
     intensity: 2.65,
     // Directional light from +X to -X
     posX: 4.65,
     posY: 3.1,
     posZ: 0.0,
-    targetX: -3.0,
-    targetY: 2.0,
-    targetZ: 0.0
+    targetX: 2.5,
+    targetY: -1.0,
+    targetZ: -1.3
   }
 }
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { Html, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 
 import { GameCamera } from '../game/GameCamera'
@@ -15,8 +15,11 @@ import { useWorldStateManager } from '../game/core/WorldStateManager'
 import { createWorldFactsReader, createWorldFactsWriter } from '../game/core/worldFacts'
 import { FloraProgressBorder } from '../game/ui/FloraProgressBorder'
 import { HeldInventoryBar } from '../game/ui/HeldInventoryBar'
-import { CandyTabletPanel } from '../ui/CandyTabletPanel'
+import { AvatarHoverMenu } from '../game/ui/AvatarHoverMenu'
+import { CandyTabletPanel } from '../game/ui/CandyTabletPanel'
+import { HealingArchMural } from '../game/ui/HealingArchMural'
 import { DoctorAvatar } from '../game/avatar/DoctorAvatar'
+import bakeYellowTexture from '../../color/bake_yellow.png'
 
 const TABLE_HEIGHT = 0.85
 const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2
@@ -95,6 +98,65 @@ function InteractiveFridge({ position, isOpen, onToggle }) {
   )
 }
 
+function TexturedWindowWall({ position }) {
+  const wallTexture = useTexture(bakeYellowTexture)
+  wallTexture.colorSpace = THREE.SRGBColorSpace
+  wallTexture.wrapS = THREE.ClampToEdgeWrapping
+  wallTexture.wrapT = THREE.ClampToEdgeWrapping
+  wallTexture.repeat.set(0.6836, 1)
+  wallTexture.offset.set(0, 0)
+  wallTexture.minFilter = THREE.LinearMipmapLinearFilter
+  wallTexture.magFilter = THREE.LinearFilter
+  wallTexture.needsUpdate = true
+
+  const height = 5
+  const depth = 0.3
+  const windowWidth = 2
+  const windowHeight = 2
+
+  const leftWidth = 4
+  const rightWidth = 2
+  const topBottomHeight = (height - windowHeight) / 2
+
+  const leftCenterX = -2
+  const rightCenterX = 3
+  const windowCenterX = 1
+  const topCenterY = windowHeight / 2 + topBottomHeight / 2
+  const bottomCenterY = -topCenterY
+
+  const materialProps = {
+    map: wallTexture,
+    color: '#ffffff',
+    emissive: '#000000',
+    emissiveIntensity: 0,
+    roughness: 0.5,
+    metalness: 0
+  }
+
+  return (
+    <group position={position}>
+      <mesh position={[leftCenterX, 0, 0]}>
+        <boxGeometry args={[leftWidth, height, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[rightCenterX, 0, 0]}>
+        <boxGeometry args={[rightWidth, height, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[windowCenterX, bottomCenterY, 0]}>
+        <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[windowCenterX, topCenterY, 0]}>
+        <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+    </group>
+  )
+}
 function OutsideWindowPanel() {
   return (
     <Html
@@ -132,6 +194,7 @@ function OutsideWindowPanel() {
 export function Level1({ onBack }) {
   const [showDebug, setShowDebug] = useState(false)
   const [actionLine, setActionLine] = useState('Action: waiting for next step')
+  const taskInputRef = useRef(null)
   const lighting = usePlaygroundLightingSettings()
 
   const worldStateManager = useWorldStateManager({
@@ -190,9 +253,9 @@ export function Level1({ onBack }) {
   const fridgeDoorOpen = worldStateManager.fridgeOpen
   const cubeState = getPrimaryItemState(worldStateManager.cubes)
   const cubePosition =
-    cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
+    cubeState === 'picked' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
 
-  const heldItems = cubeState === 'in_hand' ? [{ id: 'apple', label: 'Apple' }] : []
+  const heldItems = cubeState === 'picked' ? [{ id: 'apple', label: 'Apple' }] : []
 
   const taskLine = 'Task: ' + (agentSystem.userInstruction?.trim() || 'No task set')
   const isVictory = cubeState === 'in_fridge'
@@ -257,17 +320,27 @@ export function Level1({ onBack }) {
         <span>{"<-"}</span> Back
       </button>
 
-      <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
-        <NotificationBubble text={taskLine} subText={actionLine} style={{ transform: 'translateY(-20px)' }} />
+      <div className="absolute top-8 right-8 z-50">
+        <NotificationBubble text={taskLine} subText={actionLine} />
       </div>
 
       <div className="absolute bottom-8 left-[23rem] -translate-x-1/2 z-50">
         <HeldInventoryBar items={heldItems} activeIndex={0} />
       </div>
 
-      <div className="absolute right-0 bottom-0 z-40 w-[32vh] h-[32vh] min-w-[300px] min-h-[300px] max-w-[420px] max-h-[420px]">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[75%] h-[75%] rounded-[24px] bg-[#E6EFEA] shadow-md overflow-hidden border border-white/70">
-          <DoctorAvatar status="idle" className="w-full h-full" disableEyeTracking={true} />
+      <div className="absolute right-0 bottom-0 z-40 w-[28vh] h-[28vh] min-w-[260px] min-h-[260px] max-w-[360px] max-h-[360px]">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[68%] h-[68%]">
+          <AvatarHoverMenu
+            className="w-full h-full"
+            tooltipText="Click to talk with me"
+            onProgressClick={() => setShowDebug(true)}
+            onTaskClick={() => taskInputRef.current?.focus()}
+            onChatClick={() => agentSystem.tick()}
+          >
+            <div className="w-full h-full rounded-[24px] bg-[#E6EFEA] shadow-md overflow-hidden border border-white/70">
+              <DoctorAvatar status="idle" className="w-full h-full" disableEyeTracking={true} />
+            </div>
+          </AvatarHoverMenu>
         </div>
         <CandyTabletPanel />
       </div>
@@ -276,6 +349,7 @@ export function Level1({ onBack }) {
         <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
           <span className="text-sm font-bold text-gray-600">Task:</span>
           <input
+            ref={taskInputRef}
             type="text"
             value={agentSystem.userInstruction}
             onChange={(e) => handleTaskChange(e.target.value)}
@@ -390,7 +464,8 @@ export function Level1({ onBack }) {
 
         <Floor width={10} depth={10} color="#8199aa" />
         <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color="#ffc697" />
-        <Wall position={[0, 2.5, -2.5]} hasWindow={true} color="#f8dec2" />
+        <HealingArchMural position={[-1.8, 2.5, -2.33]} rotation={[0, 0, 0]} />
+        <TexturedWindowWall position={[0, 2.5, -2.5]} />
         <OutsideWindowPanel />
 
         <Table position={[0, 0, -1.68]} scale={[1.2, 1.2, 1.44]} />

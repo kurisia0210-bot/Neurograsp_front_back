@@ -18,7 +18,7 @@ from core.domain_config import (
     POI_TABLE_CENTER,
     STATE_CLOSED,
     STATE_IN_FRIDGE,
-    STATE_IN_HAND,
+    STATE_PICKED,
     STATE_ON_TABLE,
     STATE_OPEN,
     TASK_TOKENS_FRIDGE,
@@ -104,7 +104,7 @@ def _rule_put_primary_item_in_fridge(obs: ObservationPayload) -> ActionPayload:
             return _interact(obs, InteractionType.CLOSE, OBJECT_ID_FRIDGE_DOOR, f"Close {OBJECT_ID_FRIDGE_DOOR}")
         return _finish(obs, f"Success: {ITEM_NL_LABEL} is in fridge.")
 
-    if not _item_is_in_hand(holding, item_state):
+    if not _item_is_picked(holding, item_state):
         if location != POI_TABLE_CENTER:
             return _move_to(obs, POI_TABLE_CENTER, f"Move to {POI_TABLE_CENTER}")
         if item_state == STATE_ON_TABLE:
@@ -168,7 +168,7 @@ def _rule_pick_primary_item(obs: ObservationPayload) -> ActionPayload:
     item_state = _get_object_state_by_ids(obs, OBJECT_ID_PRIMARY_ITEM_ALIASES)
     item_id = _resolve_primary_item_id(obs, holding)
 
-    if _item_is_in_hand(holding, item_state):
+    if _item_is_picked(holding, item_state):
         return _finish(obs, f"Success: holding {ITEM_NL_LABEL}.")
 
     if item_state == STATE_ON_TABLE:
@@ -232,7 +232,7 @@ def _rule_place_primary_item(obs: ObservationPayload) -> ActionPayload:
     if item_state == STATE_IN_FRIDGE:
         return _finish(obs, f"Success: {ITEM_NL_LABEL} is in fridge.")
 
-    if _item_is_in_hand(holding, item_state):
+    if _item_is_picked(holding, item_state):
         return _interact(
             obs,
             InteractionType.PLACE,
@@ -389,8 +389,8 @@ def _resolve_primary_item_id(obs: ObservationPayload, holding: Optional[str]) ->
     return OBJECT_ID_PRIMARY_ITEM
 
 
-def _item_is_in_hand(holding: Optional[str], item_state: Optional[str]) -> bool:
-    return item_state == STATE_IN_HAND or holding in OBJECT_ID_PRIMARY_ITEM_ALIASES
+def _item_is_picked(holding: Optional[str], item_state: Optional[str]) -> bool:
+    return item_state == STATE_PICKED or holding in OBJECT_ID_PRIMARY_ITEM_ALIASES
 
 
 def _interact(

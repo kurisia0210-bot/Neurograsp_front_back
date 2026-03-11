@@ -38,7 +38,8 @@ class PoiName(str, Enum):
 
 class ObjectState(str, Enum):
     ON_TABLE = "on_table"
-    IN_HAND = "in_hand"
+    PICKED = "picked"
+    IN_HAND = "picked"
     IN_FRIDGE = "in_fridge"
     CLOSED = "closed"
     OPEN = "open"

@@ -1,4 +1,8 @@
 import React from 'react'
+import { useTexture } from '@react-three/drei'
+import * as THREE from 'three'
+
+import bakeBlueTexture from '../color/bake_blue.png'
 
 export function Wall({
   width = 10,
@@ -8,7 +12,15 @@ export function Wall({
   hasWindow = false,
   ...props
 }) {
-  const materialProps = {
+  const bakedWallTexture = useTexture(bakeBlueTexture)
+  bakedWallTexture.colorSpace = THREE.SRGBColorSpace
+  bakedWallTexture.wrapS = THREE.ClampToEdgeWrapping
+  bakedWallTexture.wrapT = THREE.ClampToEdgeWrapping
+  bakedWallTexture.repeat.set(0.6836, 1)
+  bakedWallTexture.offset.set(0, 0)
+  bakedWallTexture.needsUpdate = true
+
+  const plainMaterialProps = {
     color,
     emissive: '#000000',
     emissiveIntensity: 0,
@@ -33,22 +45,22 @@ export function Wall({
       <group {...props}>
         <mesh position={[leftCenterX, 0, 0]} receiveShadow>
           <boxGeometry args={[leftWidth, height, depth]} />
-          <meshStandardMaterial {...materialProps} />
+          <meshStandardMaterial {...plainMaterialProps} />
         </mesh>
 
         <mesh position={[rightCenterX, 0, 0]} receiveShadow>
           <boxGeometry args={[rightWidth, height, depth]} />
-          <meshStandardMaterial {...materialProps} />
+          <meshStandardMaterial {...plainMaterialProps} />
         </mesh>
 
         <mesh position={[windowCenterX, bottomCenterY, 0]} receiveShadow>
           <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
-          <meshStandardMaterial {...materialProps} />
+          <meshStandardMaterial {...plainMaterialProps} />
         </mesh>
 
         <mesh position={[windowCenterX, topCenterY, 0]} receiveShadow>
           <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
-          <meshStandardMaterial {...materialProps} />
+          <meshStandardMaterial {...plainMaterialProps} />
         </mesh>
       </group>
     )
@@ -57,7 +69,13 @@ export function Wall({
   return (
     <mesh receiveShadow {...props}>
       <boxGeometry args={[width, height, depth]} />
-      <meshStandardMaterial {...materialProps} />
+      <meshStandardMaterial
+        map={bakedWallTexture}
+        color="#ffffff"
+        emissive="#000000"
+        emissiveIntensity={0}
+        roughness={0.5}
+      />
     </mesh>
   )
 }

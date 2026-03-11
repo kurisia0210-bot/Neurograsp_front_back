@@ -1,0 +1,98 @@
+<svg width="800" height="1000" viewBox="0 0 800 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="arch-mask">
+      <path d="M 0 400 A 400 400 0 0 1 800 400 L 800 1000 L 0 1000 Z" />
+    </clipPath>
+
+    <g id="plant-left">
+      <path d="M 0 150 Q 30 80, 80 0" stroke="#f4ecd8" stroke-width="6" fill="none" stroke-linecap="round" />
+      <circle cx="20" cy="110" r="15" fill="#f4ecd8" />
+      <circle cx="50" cy="50" r="12" fill="#f4ecd8" />
+      <circle cx="80" cy="0" r="10" fill="#f4ecd8" />
+      <path d="M 30 150 Q 80 100, 120 40" stroke="#f4ecd8" stroke-width="5" fill="none" stroke-linecap="round" />
+      <circle cx="80" cy="90" r="10" fill="#f4ecd8" />
+      <circle cx="120" cy="40" r="8" fill="#f4ecd8" />
+    </g>
+
+    <g id="plant-right">
+      <path d="M 100 200 Q 80 100, 0 0" stroke="#234d3c" stroke-width="8" fill="none" stroke-linecap="round" />
+      <path d="M 60 140 C 30 120, 10 140, 0 120 C 20 100, 50 110, 60 140 Z" fill="#234d3c" />
+      <path d="M 40 80 C 10 60, -10 80, -20 60 C 0 40, 30 50, 40 80 Z" fill="#234d3c" />
+      <path d="M 10 20 C -10 0, -30 20, -40 0 C -20 -20, 0 -10, 10 20 Z" fill="#234d3c" />
+    </g>
+
+    <g id="cloud-soft" fill="#f7f2e7" opacity="0.78">
+      <ellipse cx="36" cy="24" rx="22" ry="16" />
+      <ellipse cx="58" cy="20" rx="18" ry="13" />
+      <ellipse cx="18" cy="28" rx="15" ry="11" />
+      <rect x="14" y="22" width="54" height="16" rx="8" ry="8" />
+    </g>
+
+    <g id="animal-cat-shadow" fill="#1e4034" opacity="0.46">
+      <ellipse cx="32" cy="24" rx="22" ry="13" />
+      <circle cx="54" cy="18" r="8" />
+      <path d="M 49 12 L 53 4 L 56 12 Z" />
+      <path d="M 55 12 L 59 4 L 62 12 Z" />
+      <path d="M 10 24 Q 2 20 1 13 Q 7 14 12 20" fill="none" stroke="#1e4034" stroke-width="4" stroke-linecap="round" />
+    </g>
+
+    <g id="animal-rabbit-shadow" fill="#1d3d33" opacity="0.44">
+      <ellipse cx="32" cy="26" rx="20" ry="12" />
+      <circle cx="52" cy="19" r="7" />
+      <ellipse cx="49" cy="6" rx="3.5" ry="10" />
+      <ellipse cx="56" cy="5" rx="3.5" ry="11" />
+      <circle cx="16" cy="33" r="4" />
+    </g>
+
+    <g id="animal-dog-shadow" fill="#214438" opacity="0.45">
+      <ellipse cx="36" cy="24" rx="24" ry="12" />
+      <circle cx="58" cy="20" r="8" />
+      <ellipse cx="63" cy="24" rx="3" ry="5" />
+      <rect x="20" y="30" width="4" height="9" rx="2" />
+      <rect x="42" y="30" width="4" height="9" rx="2" />
+      <path d="M 12 21 Q 4 16 2 9" fill="none" stroke="#214438" stroke-width="4" stroke-linecap="round" />
+    </g>
+
+    <g id="animal-bird-shadow" fill="#1f4336" opacity="0.42">
+      <path d="M 8 22 Q 20 8, 34 22 Q 22 18, 8 22 Z" />
+      <path d="M 26 22 Q 38 8, 52 22 Q 40 18, 26 22 Z" />
+      <circle cx="54" cy="20" r="3" />
+    </g>
+
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fdfaef" />
+      <stop offset="100%" stop-color="#f4ecd8" />
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="1000" fill="#8fa696" />
+
+  <g clip-path="url(#arch-mask)">
+    <rect x="0" y="0" width="800" height="1000" fill="url(#skyGrad)" />
+
+    <use href="#cloud-soft" x="98" y="238" transform="scale(1.1)" />
+    <use href="#cloud-soft" x="462" y="198" transform="scale(1.25)" />
+    <use href="#cloud-soft" x="312" y="312" transform="scale(0.9)" opacity="0.72" />
+
+    <path d="M 150 200 Q 170 200, 170 180 Q 170 200, 190 200 Q 170 200, 170 220 Q 170 200, 150 200 Z" fill="#d87056" opacity="0.6" />
+    <path d="M 650 300 Q 660 300, 660 290 Q 660 300, 670 300 Q 660 300, 660 310 Q 660 300, 650 300 Z" fill="#cc8580" opacity="0.8" />
+    <circle cx="220" cy="120" r="4" fill="#e8c05d" />
+    <circle cx="600" cy="180" r="6" fill="#e8c05d" />
+
+    <circle cx="400" cy="550" r="220" fill="#e8c05d" />
+
+    <path d="M 0 600 Q 250 500, 600 700 T 1000 650 L 1000 1000 L 0 1000 Z" fill="#cc8580" />
+    <path d="M 800 680 Q 450 600, 150 780 T -200 800 L -200 1000 L 800 1000 Z" fill="#d87056" />
+    <path d="M 0 850 Q 350 780, 800 950 L 800 1000 L 0 1000 Z" fill="#3f6f5d" />
+
+    <use href="#animal-bird-shadow" x="198" y="652" transform="scale(0.9)" />
+    <use href="#animal-cat-shadow" x="128" y="816" transform="scale(0.78)" />
+    <use href="#animal-rabbit-shadow" x="256" y="840" transform="scale(0.74)" />
+    <use href="#animal-dog-shadow" x="494" y="862" transform="scale(0.76)" />
+
+    <use href="#plant-left" x="0" y="850" />
+    <use href="#plant-right" x="700" y="800" />
+  </g>
+
+  <path d="M 2 400 A 398 398 0 0 1 798 400 L 798 998 L 2 998 Z" stroke="#f4ecd8" stroke-width="4" fill="none" />
+</svg>

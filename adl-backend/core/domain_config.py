@@ -24,7 +24,8 @@ POI_STOVE_ZONE = "stove_zone"
 
 # Object states
 STATE_ON_TABLE = "on_table"
-STATE_IN_HAND = "in_hand"
+STATE_PICKED = "picked"
+STATE_IN_HAND = STATE_PICKED  # backward compatibility alias
 STATE_IN_FRIDGE = "in_fridge"
 STATE_OPEN = "open"
 STATE_CLOSED = "closed"
@@ -68,6 +69,7 @@ __all__ = [
     "POI_FRIDGE_ZONE",
     "POI_STOVE_ZONE",
     "STATE_ON_TABLE",
+    "STATE_PICKED",
     "STATE_IN_HAND",
     "STATE_IN_FRIDGE",
     "STATE_OPEN",

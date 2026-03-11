@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { Html, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 
 import { GameCamera } from '../components/game/GameCamera'
@@ -12,6 +12,8 @@ import {
 import { Floor } from '../components/Floor'
 import { Wall } from '../components/Wall'
 import { Table } from '../components/Table'
+import healingArchMuralImage from '../assets/healing-arch-mural.svg'
+import bakeYellowTexture from '../color/bake_yellow.png'
 
 const TABLE_HEIGHT = 0.85
 const EFFECTIVE_HEIGHT = TABLE_HEIGHT * 2
@@ -27,6 +29,8 @@ const DEFAULT_SURFACE_COLORS = {
 }
 const WINDOW_IMAGE_DEFAULT_POS = { x: 1.08, y: 2.58, z: -2.29 }
 const WINDOW_IMAGE_PIXEL_SIZE = 7540
+const MURAL_IMAGE_DEFAULT_POS = { x: -1.8, y: 2.5, z: -2.33 }
+const MURAL_IMAGE_PIXEL_SIZE = 220
 
 
 function shadeHex(hex, factor) {
@@ -113,6 +117,65 @@ function WallColorDebugger({ color, visible }) {
   )
 }
 
+function TexturedWindowWall({ position }) {
+  const wallTexture = useTexture(bakeYellowTexture)
+  wallTexture.colorSpace = THREE.SRGBColorSpace
+  wallTexture.wrapS = THREE.ClampToEdgeWrapping
+  wallTexture.wrapT = THREE.ClampToEdgeWrapping
+  wallTexture.repeat.set(0.6836, 1)
+  wallTexture.offset.set(0, 0)
+  wallTexture.minFilter = THREE.LinearMipmapLinearFilter
+  wallTexture.magFilter = THREE.LinearFilter
+  wallTexture.needsUpdate = true
+
+  const height = 5
+  const depth = 0.3
+  const windowWidth = 2
+  const windowHeight = 2
+
+  const leftWidth = 4
+  const rightWidth = 2
+  const topBottomHeight = (height - windowHeight) / 2
+
+  const leftCenterX = -2
+  const rightCenterX = 3
+  const windowCenterX = 1
+  const topCenterY = windowHeight / 2 + topBottomHeight / 2
+  const bottomCenterY = -topCenterY
+
+  const materialProps = {
+    map: wallTexture,
+    color: '#ffffff',
+    emissive: '#000000',
+    emissiveIntensity: 0,
+    roughness: 0.5,
+    metalness: 0
+  }
+
+  return (
+    <group position={position}>
+      <mesh position={[leftCenterX, 0, 0]}>
+        <boxGeometry args={[leftWidth, height, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[rightCenterX, 0, 0]}>
+        <boxGeometry args={[rightWidth, height, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[windowCenterX, bottomCenterY, 0]}>
+        <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+
+      <mesh position={[windowCenterX, topCenterY, 0]}>
+        <boxGeometry args={[windowWidth, topBottomHeight, depth]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
+    </group>
+  )
+}
 function RawColorOverride({ enabled }) {
   const { scene } = useThree()
   const originalMaterialsRef = useRef(new Map())
@@ -259,6 +322,39 @@ function WindowImagePlane({ position, size }) {
   )
 }
 
+function MuralImagePlane({ position, size }) {
+  return (
+    <Html
+      position={[position.x, position.y, position.z]}
+      rotation={[0, 0, 0]}
+      transform
+      center
+      scale={0.01}
+      style={{ pointerEvents: 'none' }}
+    >
+      <div
+        style={{
+          width: size,
+          height: size * 1.25,
+          overflow: 'hidden'
+        }}
+      >
+        <img
+          src={healingArchMuralImage}
+          alt=""
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            filter: 'saturate(1.2) contrast(1.06)',
+            display: 'block'
+          }}
+        />
+      </div>
+    </Html>
+  )
+}
 export function Playground({ onBack }) {
   const [fridgeDoorOpen, setFridgeDoorOpen] = useState(false)
   const [cubeState, setCubeState] = useState('on_table')
@@ -268,9 +364,11 @@ export function Playground({ onBack }) {
   const [wallTestHex, setWallTestHex] = useState(DEFAULT_SURFACE_COLORS.wallTest)
   const [floorHex, setFloorHex] = useState(DEFAULT_SURFACE_COLORS.floor)
   const [fridgeHex, setFridgeHex] = useState(DEFAULT_SURFACE_COLORS.fridge)
-  const [showColorDebugger, setShowColorDebugger] = useState(false)
+  const showColorDebugger = false
   const [windowImagePos, setWindowImagePos] = useState(WINDOW_IMAGE_DEFAULT_POS)
   const [windowImageSize, setWindowImageSize] = useState(WINDOW_IMAGE_PIXEL_SIZE)
+  const [muralImagePos, setMuralImagePos] = useState(MURAL_IMAGE_DEFAULT_POS)
+  const [muralImageSize, setMuralImageSize] = useState(MURAL_IMAGE_PIXEL_SIZE)
   const lighting = usePlaygroundLightingSettings()
 
   const applyHexColor = (key, value) => {
@@ -298,7 +396,7 @@ export function Playground({ onBack }) {
   }
 
   const cubePosition =
-    cubeState === 'in_hand' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
+    cubeState === 'picked' ? CUBE_POS_HAND : cubeState === 'in_fridge' ? CUBE_POS_FRIDGE : CUBE_POS_TABLE
 
 
   const updateWindowImageAxis = (axis, value) => {
@@ -314,6 +412,18 @@ export function Playground({ onBack }) {
     setWindowImageSize(clamped)
   }
 
+  const updateMuralImageAxis = (axis, value) => {
+    const numeric = Number(value)
+    if (Number.isNaN(numeric)) return
+    setMuralImagePos((prev) => ({ ...prev, [axis]: numeric }))
+  }
+
+  const updateMuralImageSize = (value) => {
+    const numeric = Number(value)
+    if (Number.isNaN(numeric)) return
+    const clamped = Math.max(80, Math.min(10000, numeric))
+    setMuralImageSize(clamped)
+  }
   return (
     <div className="w-full h-screen relative bg-[#edf3f7] overflow-hidden">
       {onBack && (
@@ -435,6 +545,110 @@ export function Playground({ onBack }) {
           <div className="text-[11px] text-gray-500">Current size: {windowImageSize}px</div>
         </div>
 
+                <div className="mb-3 border-t border-gray-200 pt-2">
+          <div className="font-semibold mb-2">Mural Image Position Test (ItJustWork)</div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">X</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="-3.4"
+                max="3"
+                step="0.01"
+                value={muralImagePos.x}
+                onChange={(e) => updateMuralImageAxis('x', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={muralImagePos.x}
+                onChange={(e) => updateMuralImageAxis('x', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Y</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="3.5"
+                step="0.01"
+                value={muralImagePos.y}
+                onChange={(e) => updateMuralImageAxis('y', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={muralImagePos.y}
+                onChange={(e) => updateMuralImageAxis('y', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Z</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="-4.8"
+                max="2.2"
+                step="0.01"
+                value={muralImagePos.z}
+                onChange={(e) => updateMuralImageAxis('z', e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={muralImagePos.z}
+                onChange={(e) => updateMuralImageAxis('z', e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="mb-2 p-2 rounded border border-gray-200 bg-white/70">
+            <div className="text-[11px] font-semibold text-gray-700 mb-2">Mural Size (px)</div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="80"
+                max="10000"
+                step="1"
+                value={muralImageSize}
+                onChange={(e) => updateMuralImageSize(e.target.value)}
+                className="flex-1"
+              />
+              <input
+                type="number"
+                step="1"
+                value={muralImageSize}
+                onChange={(e) => updateMuralImageSize(e.target.value)}
+                className="w-20 px-2 py-1 border border-gray-300 rounded font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => setMuralImagePos(MURAL_IMAGE_DEFAULT_POS)}
+              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
+            >
+              Reset XYZ
+            </button>
+            <button
+              onClick={() => setMuralImageSize(MURAL_IMAGE_PIXEL_SIZE)}
+              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
+            >
+              Reset Size
+            </button>
+          </div>
+          <div className="text-[11px] text-gray-500">
+            Current: [{muralImagePos.x.toFixed(2)}, {muralImagePos.y.toFixed(2)}, {muralImagePos.z.toFixed(2)}] / {muralImageSize}px
+          </div>
+        </div>
         <div className="mb-3 border-t border-gray-200 pt-2">
           <div className="font-semibold mb-2">Surface Color Painter</div>
           <label className="flex items-center justify-between mb-2">
@@ -518,12 +732,6 @@ export function Playground({ onBack }) {
             >
               Reset
             </button>
-            <button
-              onClick={() => setShowColorDebugger((prev) => !prev)}
-              className="px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300"
-            >
-              {showColorDebugger ? 'Hide Patch' : 'Show Patch'}
-            </button>
           </div>
           <div className="text-[11px] text-gray-500">
             Current: mainWall {surfaceColors.wallMain} / testWall {surfaceColors.wallTest} / floor {surfaceColors.floor} / fridge {surfaceColors.fridge}
@@ -542,8 +750,8 @@ export function Playground({ onBack }) {
           <button onClick={() => setCubeState('on_table')} className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300">
             Cube: Table
           </button>
-          <button onClick={() => setCubeState('in_hand')} className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300">
-            Cube: Hand
+          <button onClick={() => setCubeState('picked')} className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300">
+            Cube: Picked
           </button>
           <button
             onClick={() => setCubeState('in_fridge')}
@@ -568,7 +776,8 @@ export function Playground({ onBack }) {
 
         <Floor width={12} depth={12} color={surfaceColors.floor} />
         <Wall position={[-3, 2.5, 0]} rotation={[0, Math.PI / 2, 0]} width={10} height={5} color={surfaceColors.wallTest} />
-        <Wall position={[0, 2.5, -2.5]} hasWindow={true} color={surfaceColors.wallMain} />
+        <MuralImagePlane position={muralImagePos} size={muralImageSize} />
+        <TexturedWindowWall position={[0, 2.5, -2.5]} />
         <WindowImagePlane position={windowImagePos} size={windowImageSize} />
         <WallColorDebugger color={surfaceColors.wallMain} visible={showColorDebugger} />
 
@@ -588,4 +797,3 @@ export function Playground({ onBack }) {
     </div>
   )
 }
-
