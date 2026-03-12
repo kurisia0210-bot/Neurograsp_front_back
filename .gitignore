@@ -35,3 +35,6 @@ yarn-error.log*
 # ==========================
 adl-backend/legacy/
 adl-web/src/legacy/
+desktop.ini
+*.xxrule
+.xxrule
