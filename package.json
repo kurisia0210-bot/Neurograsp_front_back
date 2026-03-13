@@ -1,0 +1,12 @@
+{
+  "name": "neuroweb-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:adl-web": "npm --workspace apps/adl-web run dev",
+    "build:adl-web": "npm --workspace apps/adl-web run build",
+    "lint:adl-web": "npm --workspace apps/adl-web run lint"
+  }
+}
