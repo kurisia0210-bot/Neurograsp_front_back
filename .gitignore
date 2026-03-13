@@ -8,7 +8,7 @@ venv/
 .venv/
 .env
 .DS_Store
-chroma_db/          # Chroma鍚戦噺鏁版嵁搴撴枃浠?
+chroma_db/          # Chroma向量数据库文件
 
 # ==========================
 # Node / Frontend
@@ -34,6 +34,7 @@ yarn-error.log*
 # Legacy / Backup Files
 # ==========================
 adl-backend/legacy/
+adl-web/src/legacy/
 apps/adl-web/src/legacy/
 desktop.ini
 *.xxrule
