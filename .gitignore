@@ -8,7 +8,7 @@ venv/
 .venv/
 .env
 .DS_Store
-chroma_db/          # Chromaå‘é‡æ•°æ®åº“æ–‡ä»¶
+chroma_db/          # ChromaÏòÁ¿Êı¾İ¿âÎÄ¼ş
 
 # ==========================
 # Node / Frontend
@@ -35,6 +35,13 @@ yarn-error.log*
 # ==========================
 adl-backend/legacy/
 adl-web/src/legacy/
+apps/adl-web/src/legacy/
 desktop.ini
 *.xxrule
 .xxrule
+
+# Non-Code Upload Exclusions
+docs/
+*.glb
+*rules
+*.rules
