@@ -1,4 +1,13 @@
 # NeuroGrasp
+```text
+🚧 🚧 🚧  UNDER CONSTRUCTION  🚧 🚧 🚧
+
+ _   _ _   _ ____  _____ ____     ____ ___  _   _ ____ _____ ____  _   _  ____ _____ ___ ___  _   _
+| | | | \ | |  _ \| ____|  _ \   / ___/ _ \| \ | / ___|_   _|  _ \| | | |/ ___|_   _|_ _/ _ \| \ | |
+| | | |  \| | | | |  _| | |_) | | |  | | | |  \| \___ \ | | | |_) | | | | |     | |  | | | | |  \| |
+| |_| | |\  | |_| | |___|  _ <  | |__| |_| | |\  |___) || | |  _ <| |_| | |___  | |  | | |_| | |\  |
+ \___/|_| \_|____/|_____|_| \_\  \____\___/|_| \_|____/ |_| |_| \_\\___/ \____| |_| |___\___/|_| \_|
+```
 
 **Agent-Driven Serious Game Platform for Training Daily Living Skills (ADL)**
 
@@ -34,13 +43,13 @@ The design emphasizes:
 ## Core Idea
 
 Player Interaction
- ↓
+ 閳?
 Game Event Logs
- ↓
+ 閳?
 Behavioral Metrics
- ↓
+ 閳?
 LLM Explanation Agent
- ↓
+ 閳?
 Caregiver / Therapist Report
 
 LLMs **do not control gameplay logic**.  
@@ -82,11 +91,11 @@ Each action generates structured logs:
 The system uses a structured agent pipeline:
 
 Observation
-     ↓
+     閳?
 Reasoning (LLM proposal)
-     ↓
+     閳?
 Reflex Layer (deterministic safety rules)
-     ↓
+     閳?
 Action
 
 
@@ -115,4 +124,5 @@ Independent developer and researcher exploring **agent architectures and serious
 ## License
 
 MIT
+
 
