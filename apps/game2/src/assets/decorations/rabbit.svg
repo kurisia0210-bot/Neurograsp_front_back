@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="400" height="400">
+  <!-- 可爱兔子 - 儿童友好的实体动物SVG -->
+  <style>
+    .rabbit-body { fill: #F5F5F5; stroke: #E0E0E0; stroke-width: 3; }
+    .rabbit-ear { fill: #F5F5F5; stroke: #E0E0E0; stroke-width: 3; }
+    .rabbit-ear-inner { fill: #FFCDD2; }
+    .rabbit-eye { fill: #000000; }
+    .rabbit-eye-white { fill: #FFFFFF; }
+    .rabbit-nose { fill: #FF8A80; }
+    .rabbit-mouth { fill: none; stroke: #000000; stroke-width: 2; }
+    .rabbit-paw { fill: #F5F5F5; stroke: #E0E0E0; stroke-width: 2; }
+    .carrot { fill: #FF9800; }
+    .carrot-leaf { fill: #7CB342; }
+    .grass { fill: #7CB342; }
+    
+    /* 动画效果 */
+    .rabbit-ear {
+      animation: ear-twitch 2s ease-in-out infinite;
+    }
+    .rabbit-body {
+      animation: breathe 3s ease-in-out infinite;
+    }
+    
+    @keyframes ear-twitch {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(5deg); }
+    }
+    
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+  </style>
+  
+  <!-- 草地背景 -->
+  <rect width="200" height="200" fill="#C8E6C9"/>
+  
+  <!-- 草叶 -->
+  <g fill="#7CB342">
+    <path d="M 20 180 Q 25 150 30 180"/>
+    <path d="M 40 180 Q 45 155 50 180"/>
+    <path d="M 60 180 Q 65 160 70 180"/>
+    <path d="M 80 180 Q 85 152 90 180"/>
+    <path d="M 100 180 Q 105 158 110 180"/>
+    <path d="M 120 180 Q 125 153 130 180"/>
+    <path d="M 140 180 Q 145 157 150 180"/>
+    <path d="M 160 180 Q 165 154 170 180"/>
+    <path d="M 180 180 Q 185 156 190 180"/>
+  </g>
+  
+  <!-- 兔子身体 -->
+  <ellipse class="rabbit-body" cx="100" cy="120" rx="40" ry="30"/>
+  
+  <!-- 兔子头部 -->
+  <circle cx="100" cy="80" r="25" fill="#F5F5F5" stroke="#E0E0E0" stroke-width="3"/>
+  
+  <!-- 兔子耳朵 -->
+  <g class="rabbit-ear" transform="translate(85, 60)">
+    <ellipse cx="0" cy="0" rx="8" ry="25"/>
+    <ellipse class="rabbit-ear-inner" cx="0" cy="5" rx="5" ry="15"/>
+  </g>
+  
+  <g class="rabbit-ear" transform="translate(115, 60)" style="animation-delay: 0.5s;">
+    <ellipse cx="0" cy="0" rx="8" ry="25"/>
+    <ellipse class="rabbit-ear-inner" cx="0" cy="5" rx="5" ry="15"/>
+  </g>
+  
+  <!-- 兔子眼睛 -->
+  <circle class="rabbit-eye-white" cx="92" cy="75" r="6"/>
+  <circle class="rabbit-eye" cx="92" cy="75" r="3"/>
+  
+  <circle class="rabbit-eye-white" cx="108" cy="75" r="6"/>
+  <circle class="rabbit-eye" cx="108" cy="75" r="3"/>
+  
+  <!-- 兔子鼻子 -->
+  <ellipse class="rabbit-nose" cx="100" cy="85" rx="4" ry="3"/>
+  
+  <!-- 兔子嘴巴 -->
+  <path class="rabbit-mouth" d="M 98 90 Q 100 95 102 90"/>
+  
+  <!-- 兔子胡须 -->
+  <path d="M 85 85 Q 80 85 75 83" fill="none" stroke="#000000" stroke-width="1"/>
+  <path d="M 85 87 Q 80 87 75 89" fill="none" stroke="#000000" stroke-width="1"/>
+  <path d="M 115 85 Q 120 85 125 83" fill="none" stroke="#000000" stroke-width="1"/>
+  <path d="M 115 87 Q 120 87 125 89" fill="none" stroke="#000000" stroke-width="1"/>
+  
+  <!-- 兔子前爪 -->
+  <ellipse class="rabbit-paw" cx="85" cy="130" rx="10" ry="8"/>
+  <ellipse class="rabbit-paw" cx="115" cy="130" rx="10" ry="8"/>
+  
+  <!-- 兔子后腿 -->
+  <ellipse class="rabbit-paw" cx="75" cy="150" rx="12" ry="10"/>
+  <ellipse class="rabbit-paw" cx="125" cy="150" rx="12" ry="10"/>
+  
+  <!-- 兔子尾巴 -->
+  <circle cx="100" cy="160" r="12" fill="#F5F5F5" stroke="#E0E0E0" stroke-width="3"/>
+  
+  <!-- 胡萝卜 -->
+  <g transform="translate(140, 130)">
+    <!-- 胡萝卜身体 -->
+    <path class="carrot" d="M 0 0 Q 10 -5 20 0 L 20 30 Q 10 35 0 30 Z"/>
+    
+    <!-- 胡萝卜叶子 -->
+    <g class="carrot-leaf" transform="translate(10, 0)">
+      <path d="M 0 0 Q 5 -15 10 0"/>
+      <path d="M 0 0 Q -5 -12 0 -10 Q 5 -8 10 0"/>
+      <path d="M 0 0 Q 8 -10 15 -5 Q 12 0 10 0"/>
+    </g>
+    
+    <!-- 胡萝卜纹理 -->
+    <path d="M 5 5 L 5 25" fill="none" stroke="#FFB74D" stroke-width="1"/>
+    <path d="M 10 8 L 10 28" fill="none" stroke="#FFB74D" stroke-width="1"/>
+    <path d="M 15 6 L 15 26" fill="none" stroke="#FFB74D" stroke-width="1"/>
+  </g>
+  
+  <!-- 花朵装饰 -->
+  <g transform="translate(50, 150)">
+    <circle cx="0" cy="0" r="6" fill="#FF6B6B"/>
+    <circle cx="5" cy="-5" r="4" fill="#FF6B6B"/>
+    <circle cx="5" cy="5" r="4" fill="#FF6B6B"/>
+    <circle cx="0" cy="7" r="4" fill="#FF6B6B"/>
+    <circle cx="-5" cy="5" r="4" fill="#FF6B6B"/>
+    <circle cx="-5" cy="-5" r="4" fill="#FF6B6B"/>
+    <circle cx="0" cy="-7" r="4" fill="#FF6B6B"/>
+    <circle cx="7" cy="0" r="4" fill="#FF6B6B"/>
+    <circle cx="-7" cy="0" r="4" fill="#FF6B6B"/>
+    <circle cx="0" cy="0" r="3" fill="#FFD54F"/>
+  </g>
+  
+  <!-- 标题 -->
+  <text x="100" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#558B2F" style="text-shadow: 1px 1px 2px rgba(255,255,255,0.8);">
+    可爱兔子
+  </text>
+  
+  <!-- 装饰文字 -->
+  <text x="100" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#7CB342">
+    爱吃胡萝卜的小兔子
+  </text>
+</svg>

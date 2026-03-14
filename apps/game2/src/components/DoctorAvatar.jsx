@@ -56,21 +56,10 @@ export function DoctorAvatar({ status = 'waiting', className = '', disableEyeTra
     return () => clearInterval(blinkLoop);
   }, []);
 
-  // === 🧠 逻辑 3: 嘴型 (修复:使用正确的MOUTH_PATHS键) ===
+  // === 🧠 逻辑 3: 嘴型 (简化版 - 所有状态都保持 idle) ===
   useEffect(() => {
-    let interval;
-    
-    // 使用语义状态进行判断,但映射到正确的MOUTH_PATHS键
-    if (semanticStatus === 'processing') { 
-      interval = setInterval(() => {
-        setMouthVariant(prev => prev === 'speaking' ? 'idle' : 'speaking');
-      }, 150);
-    } else if (semanticStatus === 'completed') {
-      setMouthVariant('success');
-    } else {
-      setMouthVariant('idle'); // MOUTH_PATHS有'idle'键
-    }
-    return () => clearInterval(interval);
+    // 所有状态都使用 idle 嘴型
+    setMouthVariant('idle');
   }, [semanticStatus]);
 
   // === 🎨 渲染层 ===
@@ -191,18 +180,6 @@ export function DoctorAvatar({ status = 'waiting', className = '', disableEyeTra
           </g>
         </g>
       </svg>
-
-      {/* 📱 手机动画:只在 completed 状态下触发 */}
-      {semanticStatus === 'completed' && (
-        <div className="absolute bottom-[10%] right-[40%] w-[60%] h-[60%] z-20 animate-arm-up pointer-events-none">
-          <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <g transform="rotate(-20 100 100)">
-                <rect x="80" y="40" width="60" height="90" rx="6" fill="white" stroke={COLORS.stroke || "#2d3748"} strokeWidth="3"/>
-                <rect x="97" y="50" width="20" height="3" rx="1.5" fill="black" opacity="0.6"/>
-            </g>
-          </svg>
-        </div>
-      )}
 
     </div>
   );

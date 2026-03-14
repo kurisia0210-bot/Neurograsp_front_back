@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200" width="600" height="400">
+  <!-- 海底世界 - 儿童友好的装饰性SVG -->
+  <style>
+    .water-bg { fill: url(#waterGradient); }
+    .sand { fill: #F4D03F; }
+    .coral-pink { fill: #FF6B6B; }
+    .coral-orange { fill: #FFA726; }
+    .coral-purple { fill: #9575CD; }
+    .fish-body { fill: #64B5F6; }
+    .fish-fin { fill: #42A5F5; }
+    .fish-eye { fill: #000000; }
+    .fish-eye-white { fill: #FFFFFF; }
+    .seaweed { fill: #388E3C; }
+    .bubble { fill: #E3F2FD; opacity: 0.7; }
+    .shell { fill: #FFD54F; }
+    .starfish { fill: #FF6B6B; }
+    
+    /* 动画效果 */
+    .fish {
+      animation: swim 8s ease-in-out infinite;
+    }
+    .bubble {
+      animation: float-up 4s ease-in infinite;
+    }
+    .seaweed {
+      animation: sway 3s ease-in-out infinite;
+    }
+    
+    @keyframes swim {
+      0%, 100% { transform: translateX(0) translateY(0); }
+      25% { transform: translateX(20px) translateY(-5px); }
+      50% { transform: translateX(0) translateY(5px); }
+      75% { transform: translateX(-20px) translateY(-5px); }
+    }
+    
+    @keyframes float-up {
+      0% { transform: translateY(0); opacity: 0.7; }
+      100% { transform: translateY(-50px); opacity: 0; }
+    }
+    
+    @keyframes sway {
+      0%, 100% { transform: skewX(0); }
+      50% { transform: skewX(5deg); }
+    }
+  </style>
+  
+  <!-- 渐变定义 -->
+  <defs>
+    <linearGradient id="waterGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4FC3F7;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#29B6F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0288D1;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 水背景 -->
+  <rect class="water-bg" width="300" height="200"/>
+  
+  <!-- 海底沙子 -->
+  <rect class="sand" x="0" y="160" width="300" height="40"/>
+  
+  <!-- 珊瑚礁 -->
+  <g transform="translate(20, 140)">
+    <path class="coral-pink" d="M 0 20 Q 10 0 20 20 Q 30 5 40 20 Q 50 10 60 20 L 60 40 L 0 40 Z"/>
+    <circle class="coral-pink" cx="30" cy="15" r="8"/>
+    <circle class="coral-pink" cx="45" cy="18" r="6"/>
+  </g>
+  
+  <g transform="translate(100, 145)">
+    <path class="coral-orange" d="M 0 15 Q 15 -5 30 15 Q 40 0 50 15 L 50 35 L 0 35 Z"/>
+    <ellipse class="coral-orange" cx="25" cy="12" rx="10" ry="6"/>
+  </g>
+  
+  <g transform="translate(200, 150)">
+    <path class="coral-purple" d="M 0 10 Q 8 -8 16 10 Q 24 -3 32 10 Q 40 0 48 10 L 48 30 L 0 30 Z"/>
+    <circle class="coral-purple" cx="24" cy="8" r="7"/>
+    <circle class="coral-purple" cx="40" cy="10" r="5"/>
+  </g>
+  
+  <!-- 海草 -->
+  <g class="seaweed" transform="translate(60, 160)">
+    <path d="M 0 0 Q 5 -30 10 0 Q 15 -25 20 0 Q 25 -35 30 0 L 30 40 L 0 40 Z"/>
+  </g>
+  
+  <g class="seaweed" transform="translate(150, 155)" style="animation-delay: 0.5s;">
+    <path d="M 0 0 Q 8 -40 16 0 Q 24 -35 32 0 Q 40 -45 48 0 L 48 45 L 0 45 Z"/>
+  </g>
+  
+  <g class="seaweed" transform="translate(240, 162)" style="animation-delay: 1s;">
+    <path d="M 0 0 Q 6 -25 12 0 Q 18 -20 24 0 Q 30 -30 36 0 L 36 38 L 0 38 Z"/>
+  </g>
+  
+  <!-- 鱼儿 -->
+  <g class="fish" transform="translate(80, 80)">
+    <!-- 鱼身体 -->
+    <ellipse class="fish-body" cx="0" cy="0" rx="25" ry="12"/>
+    
+    <!-- 鱼尾巴 -->
+    <path class="fish-fin" d="M -25 0 Q -40 -10 -35 0 Q -40 10 -25 0"/>
+    
+    <!-- 鱼鳍 -->
+    <path class="fish-fin" d="M -10 -8 Q -15 -15 -5 -8"/>
+    <path class="fish-fin" d="M -10 8 Q -15 15 -5 8"/>
+    
+    <!-- 眼睛 -->
+    <circle class="fish-eye-white" cx="15" cy="-3" r="4"/>
+    <circle class="fish-eye" cx="15" cy="-3" r="2"/>
+    
+    <!-- 嘴巴 -->
+    <path d="M 20 0 Q 25 3 20 5" fill="none" stroke="#000" stroke-width="1"/>
+    
+    <!-- 鱼鳞 -->
+    <circle cx="0" cy="0" r="2" fill="#42A5F5" opacity="0.7"/>
+    <circle cx="5" cy="2" r="2" fill="#42A5F5" opacity="0.7"/>
+    <circle cx="5" cy="-2" r="2" fill="#42A5F5" opacity="0.7"/>
+    <circle cx="-5" cy="3" r="2" fill="#42A5F5" opacity="0.7"/>
+    <circle cx="-5" cy="-3" r="2" fill="#42A5F5" opacity="0.7"/>
+  </g>
+  
+  <g class="fish" transform="translate(200, 60)" style="animation-delay: 2s; animation-duration: 6s;">
+    <!-- 鱼身体 -->
+    <ellipse class="fish-body" cx="0" cy="0" rx="20" ry="10" fill="#FF6B6B"/>
+    
+    <!-- 鱼尾巴 -->
+    <path class="fish-fin" d="M -20 0 Q -30 -8 -28 0 Q -30 8 -20 0" fill="#FF5252"/>
+    
+    <!-- 鱼鳍 -->
+    <path class="fish-fin" d="M -8 -6 Q -12 -12 -4 -6" fill="#FF5252"/>
+    <path class="fish-fin" d="M -8 6 Q -12 12 -4 6" fill="#FF5252"/>
+    
+    <!-- 眼睛 -->
+    <circle class="fish-eye-white" cx="12" cy="-2" r="3"/>
+    <circle class="fish-eye" cx="12" cy="-2" r="1.5"/>
+    
+    <!-- 嘴巴 -->
+    <path d="M 15 0 Q 18 2 15 4" fill="none" stroke="#000" stroke-width="1"/>
+  </g>
+  
+  <!-- 气泡 -->
+  <g>
+    <circle class="bubble" cx="50" cy="180" r="4" style="animation-delay: 0s;"/>
+    <circle class="bubble" cx="70" cy="170" r="3" style="animation-delay: 0.5s;"/>
+    <circle class="bubble" cx="90" cy="175" r="5" style="animation-delay: 1s;"/>
+    <circle class="bubble" cx="250" cy="180" r="4" style="animation-delay: 1.5s;"/>
+    <circle class="bubble" cx="230" cy="170" r="3" style="animation-delay: 2s;"/>
+    <circle class="bubble" cx="210" cy="175" r="5" style="animation-delay: 2.5s;"/>
+  </g>
+  
+  <!-- 贝壳 -->
+  <g transform="translate(120, 170)">
+    <path class="shell" d="M 0 0 Q 15 -10 30 0 Q 15 10 0 0 Z"/>
+    <circle cx="15" cy="0" r="3" fill="#FFB74D"/>
+    <circle cx="10" cy="-2" r="2" fill="#FFB74D"/>
+    <circle cx="20" cy="-2" r="2" fill="#FFB74D"/>
+    <circle cx="15" cy="3" r="2" fill="#FFB74D"/>
+  </g>
+  
+  <g transform="translate(270, 175)">
+    <path class="shell" d="M 0 0 Q 12 -8 24 0 Q 12 8 0 0 Z" transform="rotate(20 12 0)"/>
+    <circle cx="12" cy="0" r="2.5" fill="#FFB74D"/>
+  </g>
+  
+  <!-- 海星 -->
+  <g transform="translate(180, 175)" class="starfish">
+    <polygon points="0,-8 3,-3 8,-3 4,1 5,6 0,3 -5,6 -4,1 -8,-3 -3,-3"/>
+    <circle cx="0" cy="0" r="2" fill="#FFD54F"/>
+  </g>
+  
+  <!-- 标题 -->
+  <text x="150" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#FFFFFF" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
+    海底世界
+  </text>
+  
+  <!-- 装饰文字 -->
+  <text x="150" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#FFFFFF" opacity="0.8">
+    探索海洋的奇妙
+  </text>
+</svg>
