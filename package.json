@@ -1,12 +1,19 @@
 {
   "name": "neuroweb-workspace",
   "private": true,
+  "type": "module",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "dev:adl-web": "npm --workspace apps/adl-web run dev",
-    "build:adl-web": "npm --workspace apps/adl-web run build",
-    "lint:adl-web": "npm --workspace apps/adl-web run lint"
+    "dev:game1": "npm --workspace apps/game1 run dev",
+    "build:game1": "npm --workspace apps/game1 run build",
+    "lint:game1": "npm --workspace apps/game1 run lint",
+    "dev:game2": "npm --workspace apps/game2 run dev",
+    "build:game2": "npm --workspace apps/game2 run build",
+    "lint:game2": "npm --workspace apps/game2 run lint",
+    "dev:all": "npm run dev:game1 & npm run dev:game2",
+    "build:all": "npm run build:game1 && npm run build:game2"
   }
 }

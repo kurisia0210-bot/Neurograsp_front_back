@@ -1,5 +1,5 @@
 {
-  "name": "adl-web",
+  "name": "game1",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -20,7 +20,9 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.182.0",
-    "zustand": "^5.0.10"
+    "zustand": "^5.0.10",
+    "@neuroweb/shared-ui": "*",
+    "@neuroweb/shared-assets": "*"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
